@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.wrangler/
+*.log
+.DS_Store
+
+# Секрети й локальні налаштування. Ніколи не комітити: репозиторій публічний.
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+secrets*.json
+
+# Артефакти тестів
+test-results/
+playwright-report/
+tests/e2e/screenshots/

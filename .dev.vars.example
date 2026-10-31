@@ -1,0 +1,12 @@
+# Скопіюй у .dev.vars для локальної розробки. Самі значення не комітити.
+# У продакшені ті самі імена задаються через `wrangler secret put`.
+
+# Будь-який довгий випадковий рядок.
+PASSWORD_PEPPER=local-dev-pepper-change-me
+# 32 випадкові байти в base64url: node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+TOKEN_KEY=
+# OAuth-клієнт із Google Cloud Console. Без них вхід через Google і Диск вимкнені.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# Turnstile: без нього перевірка на робота вимкнена.
+TURNSTILE_SECRET=
