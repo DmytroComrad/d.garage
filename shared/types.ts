@@ -1,55 +1,21 @@
-export type Car = { id: string; name: string };
+import type { z } from "zod";
+import type { RawBackup } from "./backup";
+import type { carSchema, fuelSchema, opSchema, reminderSchema, serviceItemSchema, serviceSchema } from "./schema";
 
-export type ItemKind = "parts" | "labor" | "extra";
-
-export type ServiceItem = {
-  id: string;
-  kind: ItemKind;
-  name: string;
-  sum: number;
-};
-
-export type ServiceRecord = {
-  id: string;
-  car: string;
-  date: string; // YYYY-MM-DD
-  odo: number | null;
-  cat: string;
-  what: string;
-  where: string;
-  sum: number;
-  note: string;
-  items: ServiceItem[];
-};
-
-export type FuelRecord = {
-  id: string;
-  car: string;
-  date: string;
-  odo: number;
-  liters: number;
-  sum: number;
-  station: string;
-  full: boolean;
-  note: string;
-};
+/*
+ * Типи записів виводяться зі схем сервера, тому не можуть від них розійтися.
+ * Імпорт лише типовий: сама zod у браузер не потрапляє.
+ */
+export type Car = z.output<typeof carSchema>;
+export type ServiceItem = z.output<typeof serviceItemSchema>;
+export type ItemKind = ServiceItem["kind"];
+export type ServiceRecord = z.output<typeof serviceSchema>;
+export type FuelRecord = z.output<typeof fuelSchema>;
+export type Reminder = z.output<typeof reminderSchema>;
+export type Op = z.output<typeof opSchema>;
 
 /** Рівні сповіщення: 0 — ще рано, 1 — за 1000 км / 30 днів, 2 — за 500 км / 7 днів, 3 — термін настав. */
-export type ReminderLevel = 0 | 1 | 2 | 3;
-
-export type Reminder = {
-  id: string;
-  car: string;
-  title: string;
-  dueOdo: number | null;
-  dueDate: string | null;
-  done: boolean;
-  doneDate: string | null;
-  /** Найвищий рівень, про який уже показували спливаюче вікно. */
-  notified: ReminderLevel;
-  /** Запис, з якого створили нагадування. */
-  recordId: string | null;
-};
+export type ReminderLevel = Reminder["notified"];
 
 export type PhotoKind = "gallery" | "record";
 
@@ -87,18 +53,6 @@ export type Backup = {
   reminders: Reminder[];
 };
 
-export type Op =
-  | { type: "car.put"; data: Car }
-  | { type: "car.del"; id: string }
-  | { type: "service.put"; data: ServiceRecord }
-  | { type: "service.del"; id: string }
-  | { type: "fuel.put"; data: FuelRecord }
-  | { type: "fuel.del"; id: string }
-  | { type: "reminder.put"; data: Reminder }
-  | { type: "reminder.del"; id: string }
-  | { type: "demo.set"; value: boolean }
-  | { type: "all.del" };
-
 export type User = {
   id: string;
   email: string;
@@ -119,4 +73,19 @@ export type AppConfig = {
   drive: boolean;
   passwordReset: boolean;
   turnstileSiteKey: string | null;
+};
+
+/* Відповіді API: сервер перевіряє їх через satisfies, клієнт читає ті самі типи. */
+
+export type StateResponse = { user: User; data: GarageData; drive: DriveStatus };
+export type AuthResponse = { user: User };
+export type PhotoResponse = { photo: Photo };
+export type SheetExportResponse = { url: string; exportedAt: number };
+export type SheetImportResponse = { backup: RawBackup };
+
+export type OpsResponse = {
+  /** Номери операцій, які база не прийняла. */
+  rejected: number[];
+  /** Машини з уже наявною назвою: новий id → той, що в базі. */
+  remapped: Record<string, string>;
 };

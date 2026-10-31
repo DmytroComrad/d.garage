@@ -7,7 +7,7 @@ const SESSION_DAYS = 60;
 const DAY = 86_400;
 const now = () => Math.floor(Date.now() / 1000);
 
-const isHttps = (c: Context<AppEnv>) => new URL(c.req.url).protocol === "https:";
+export const isHttps = (c: Context<AppEnv>): boolean => new URL(c.req.url).protocol === "https:";
 const cookieName = (c: Context<AppEnv>) => (isHttps(c) ? "__Host-session" : "session");
 
 const setSessionCookie = (c: Context<AppEnv>, token: string) =>
@@ -35,7 +35,8 @@ export async function loadUser(c: Context<AppEnv>): Promise<SessionUser | null> 
   if (!token) return null;
   const hash = await sha256(token);
   const row = await c.env.DB.prepare(
-    `SELECT u.id, u.email, u.name, u.password_hash, u.google_sub, u.demo, s.expires_at
+    `SELECT u.id, u.email, u.name, u.password_hash, u.google_sub, u.demo, u.rev,
+            u.cars_count, u.service_count, u.fuel_count, u.reminders_count, u.photos_count, s.expires_at
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ?`,
   )

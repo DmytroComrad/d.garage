@@ -1,7 +1,5 @@
 import { useSyncExternalStore } from "react";
 import { mergeBackup, type RawBackup } from "../../shared/backup";
-import { carSummary } from "../../shared/calc";
-import { LIMITS } from "../../shared/constants";
 import { demoRecords } from "../../shared/demo";
 import { genId, todayISO } from "../../shared/format";
 import { applyOp, emptyData } from "../../shared/ops";
@@ -12,12 +10,17 @@ import type {
   FuelRecord,
   GarageData,
   Op,
+  OpsResponse,
   Photo,
   Reminder,
   ServiceRecord,
+  StateResponse,
   User,
 } from "../../shared/types";
-import { HttpError, NetworkError, getJson, postJson } from "./api";
+import { HttpError, NetworkError, getIfChanged, getJson, postJson } from "./api";
+import { createCache } from "./cache";
+import { drainQueue, reconcileQueue } from "./sync";
+import { carView, type CarView } from "./view";
 
 export type Tab = "service" | "fuel" | "reminders" | "gallery" | "stats" | "data";
 export type Theme = "auto" | "light" | "dark";
@@ -40,6 +43,7 @@ export type AppState = {
   user: User | null;
   data: GarageData;
   drive: DriveStatus;
+  etag: string | null;
   active: string | null;
   tab: Tab;
   theme: Theme;
@@ -51,7 +55,6 @@ export type AppState = {
   uploading: number;
 };
 
-const CACHE_KEY = "garage-amedro-v1";
 const UI_KEY = "garage-ui";
 const TABS: Tab[] = ["service", "fuel", "reminders", "gallery", "stats", "data"];
 
@@ -74,6 +77,7 @@ let state: AppState = {
   user: null,
   data: emptyData(),
   drive: noDrive,
+  etag: null,
   active: ui.active ?? null,
   tab: ui.tab && TABS.includes(ui.tab) ? ui.tab : "service",
   theme: ui.theme ?? "auto",
@@ -86,6 +90,10 @@ let state: AppState = {
 };
 
 const listeners = new Set<() => void>();
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
 
 const setState = (patch: Partial<AppState>): void => {
   state = { ...state, ...patch };
@@ -94,14 +102,18 @@ const setState = (patch: Partial<AppState>): void => {
 
 export const getState = (): AppState => state;
 
-export const useApp = (): AppState =>
-  useSyncExternalStore(
-    (l) => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
-    () => state,
-  );
+/**
+ * Підписка на частину стану: компонент оновиться лише тоді, коли вона зміниться, тож тост
+ * не перемальовує весь журнал. Селектор має повертати значення зі стану або примітив, а не новий об'єкт.
+ */
+export const useStore = <T>(selector: (s: AppState) => T): T => useSyncExternalStore(subscribe, () => selector(state));
+
+export const useCarView = (carId: string): CarView => {
+  const data = useStore((s) => s.data);
+  return carView(data, carId, todayISO());
+};
+
+const cache = createCache(() => localStorage);
 
 const saveUi = (): void => {
   try {
@@ -111,46 +123,17 @@ const saveUi = (): void => {
   }
 };
 
-/** Копія на пристрої: щоб відкривалось миттєво і працювало без мережі. Правда живе на сервері. */
 const saveCache = (): void => {
   if (!state.user) return;
-  try {
-    localStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({ user: state.user, data: state.data, drive: state.drive, queue: state.queue }),
-    );
-    if (!state.storageOk) setState({ storageOk: true });
-  } catch {
-    // Черга без мережі живе лише в пам'яті: про це треба сказати.
-    if (state.storageOk) setState({ storageOk: false });
-  }
-};
-
-const readCache = (): Pick<AppState, "user" | "data" | "drive" | "queue"> | null => {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
-
-/** Сесія закінчилась: дані з пристрою прибираємо, а незбережені зміни лишаємо до повторного входу. */
-const dropCachedData = (): void => {
-  if (!state.user || !state.queue.length) return clearCache();
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ user: { id: state.user.id }, queue: state.queue }));
-  } catch {
-    clearCache();
-  }
-};
-
-const clearCache = (): void => {
-  try {
-    localStorage.removeItem(CACHE_KEY);
-  } catch {
-    // Нічого стирати.
-  }
+  const ok = cache.write({
+    user: state.user,
+    data: state.data,
+    drive: state.drive,
+    queue: state.queue,
+    etag: state.etag,
+  });
+  // Черга без мережі живе лише в пам'яті: про це треба сказати.
+  if (ok !== state.storageOk) setState({ storageOk: ok });
 };
 
 const ensureActive = (): void => {
@@ -159,6 +142,31 @@ const ensureActive = (): void => {
     setState({ active: cars[0]?.id ?? null });
     saveUi();
   }
+};
+
+const signedOut = (): Partial<AppState> => ({
+  phase: "anon",
+  user: null,
+  data: emptyData(),
+  drive: noDrive,
+  etag: null,
+  queue: [],
+  dialog: null,
+});
+
+/** Сесія закінчилась: дані з пристрою прибираємо, а незбережені зміни лишаємо до повторного входу. */
+const endSession = (): void => {
+  if (state.user && state.queue.length) cache.writePending({ userId: state.user.id, queue: state.queue });
+  cache.clear();
+  setState(signedOut());
+};
+
+/** Користувач вийшов сам: на пристрої не лишається нічого. */
+export const resetToAnon = (): void => {
+  cache.clear();
+  cache.clearPending();
+  if (history.state?.dialog) history.back();
+  setState({ ...signedOut(), active: null });
 };
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -181,11 +189,17 @@ export const setActive = (active: string): void => {
   showDueReminders(active);
 };
 
+declare global {
+  interface Window {
+    garageApplyTheme?: () => void;
+  }
+}
+
 export const setTheme = (theme: Theme): void => {
   setState({ theme });
   saveUi();
-  if (theme === "auto") delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = theme;
+  // Логіка теми живе в public/theme.js: вона виконується ще до першого малювання.
+  window.garageApplyTheme?.();
 };
 
 /* Вікна. Кнопка «назад» на телефоні закриває вікно, а не сайт. */
@@ -204,10 +218,6 @@ export const closeDialog = (next: Dialog = null): void => {
   if (history.state?.dialog) history.back();
 };
 
-window.addEventListener("popstate", () => {
-  if (state.dialog) setState({ dialog: null });
-});
-
 /* Синхронізація: зміна одразу видна в інтерфейсі, а на сервер іде через чергу. */
 
 let flushing = false;
@@ -220,51 +230,45 @@ const scheduleRetry = (): void => {
   retryDelay = Math.min(retryDelay * 2, 60_000);
 };
 
+/** Машини, які сервер об'єднав із наявними: нове фото може ще посилатись на старий id. */
+const carAliases = new Map<string, string>();
+export const resolveCarId = (id: string): string => carAliases.get(id) ?? id;
+
 export async function flush(): Promise<void> {
   if (flushing || !state.user) return;
   flushing = true;
-  let stale = false;
-  let chunkSize: number = LIMITS.opsPerRequest;
+  let result;
   try {
-    while (state.queue.length) {
-      const chunk = state.queue.slice(0, chunkSize);
-      try {
-        const { rejected } = await postJson<{ rejected: number[] }>("/api/ops", { ops: chunk });
-        if (rejected.length) {
-          stale = true;
-          toast("Часть изменений не сохранилась: проверь записи.");
-        }
-        setState({ queue: state.queue.slice(chunk.length), offline: false });
+    result = await drainQueue({
+      queue: () => state.queue,
+      setQueue: (queue) => {
+        setState({ queue });
         saveCache();
-        retryDelay = 3000;
-      } catch (err) {
-        if (err instanceof HttpError && err.status === 401) {
-          dropCachedData();
-          setState({ phase: "anon", user: null, data: emptyData(), drive: noDrive, queue: [], dialog: null });
-          return;
+      },
+      send: (ops) => postJson<OpsResponse>("/api/ops", { ops }),
+      onRemap: (aliases) => {
+        for (const [from, to] of aliases) carAliases.set(from, to);
+        const moved = state.active ? aliases.get(state.active) : undefined;
+        if (moved) {
+          setState({ active: moved });
+          saveUi();
         }
-        if (err instanceof HttpError && err.status < 500 && err.status !== 429) {
-          // Сервер не приймає пачку: шукаємо винний запис поштучно, щоб не втратити решту.
-          if (chunk.length > 1) {
-            chunkSize = 1;
-            continue;
-          }
-          // Сервер відмовив остаточно: повторювати безглуздо, інакше черга застрягне назавжди.
-          setState({ queue: state.queue.slice(chunk.length) });
-          saveCache();
-          toast(err.message);
-          stale = true;
-          continue;
-        }
-        setState({ offline: true });
-        scheduleRetry();
-        return;
-      }
-    }
+      },
+      notify: toast,
+    });
   } finally {
     flushing = false;
   }
-  if (stale) await refresh();
+
+  if (result.outcome === "unauthorized") return endSession();
+  if (result.outcome === "retry") {
+    setState({ offline: true });
+    scheduleRetry();
+    return;
+  }
+  retryDelay = 3000;
+  setState({ offline: false });
+  if (result.stale) await refresh({ force: true });
 }
 
 export function dispatch(...ops: Op[]): void {
@@ -276,25 +280,25 @@ export function dispatch(...ops: Op[]): void {
   void flush();
 }
 
-type StateResponse = { user: User; data: GarageData; drive: DriveStatus };
-
-export async function refresh(): Promise<void> {
+export async function refresh({ force = false } = {}): Promise<void> {
   try {
-    const res = await getJson<StateResponse>("/api/state");
-    // Чужа черга (на пристрої збереглися зміни іншого акаунта) не має потрапити в цей гараж.
-    const queue = state.user && state.user.id !== res.user.id ? [] : state.queue;
+    const res = await getIfChanged<StateResponse>("/api/state", force ? null : state.etag);
+    if (!res.changed) {
+      setState({ offline: false });
+      return;
+    }
+    const { user, data: server, drive } = res.body;
+    const pending = cache.readPending();
+    const queue = reconcileQueue({ localUserId: state.user?.id ?? null, serverUserId: user.id, queue: state.queue, pending });
+    if (pending) cache.clearPending();
     // Операції, які ще не дійшли до сервера, накладаємо поверх свіжих даних.
-    let data = res.data;
+    let data = server;
     for (const op of queue) data = applyOp(data, op);
-    setState({ user: res.user, data, drive: res.drive, queue, phase: "ready", offline: false });
+    setState({ user, data, drive, queue, etag: res.etag, phase: "ready", offline: false });
     ensureActive();
     saveCache();
   } catch (err) {
-    if (err instanceof HttpError && err.status === 401) {
-      dropCachedData();
-      setState({ phase: "anon", user: null, data: emptyData(), drive: noDrive, queue: [], dialog: null });
-      return;
-    }
+    if (err instanceof HttpError && err.status === 401) return endSession();
     if (err instanceof NetworkError || (err instanceof HttpError && err.status >= 500)) {
       setState({ offline: true });
     }
@@ -335,21 +339,20 @@ const consumeUrlParams = (): void => {
   if (message) toast(message);
 };
 
+export const clearResetToken = (): void => setState({ resetToken: null });
+
 export async function boot(): Promise<void> {
+  window.addEventListener("popstate", () => {
+    if (state.dialog) setState({ dialog: null });
+  });
   consumeUrlParams();
   void getJson<AppConfig>("/api/config")
     .then((config) => setState({ config }))
     .catch(() => undefined);
 
-  const cached = readCache();
-  if (cached?.user && cached.data) {
-    setState({
-      user: cached.user,
-      data: cached.data,
-      drive: cached.drive ?? noDrive,
-      queue: cached.queue ?? [],
-      phase: "ready",
-    });
+  const cached = cache.read();
+  if (cached) {
+    setState({ ...cached, phase: "ready" });
     ensureActive();
   }
 
@@ -376,35 +379,34 @@ export async function syncNow(): Promise<void> {
   if (state.active && !state.dialog) showDueReminders(state.active);
 }
 
+/** Після входу: забрати дані й дописати те, що чекало в черзі. Кидає помилку, якщо сервер недоступний. */
 export async function afterAuth(): Promise<void> {
-  const previous = readCache();
-  await refresh();
-  // Якщо сесія закінчилась посеред роботи, незбережені зміни того ж користувача не губимо.
-  if (previous?.user?.id === state.user?.id && previous?.queue?.length) {
-    let data = state.data;
-    for (const op of previous.queue) data = applyOp(data, op);
-    setState({ queue: previous.queue, data });
-    await flush();
-  } else if (previous?.user?.id !== state.user?.id) {
-    saveCache();
-  }
+  await refresh({ force: true });
+  if (state.phase !== "ready") throw new NetworkError("Нет связи с сервером.");
+  await flush();
   if (state.active) showDueReminders(state.active);
 }
 
+/**
+ * Вихід лише після відповіді сервера: cookie сесії недоступна з JavaScript, тож без неї
+ * акаунт відкрився б знову. Незбережені записи теж не можна просто стерти.
+ */
 export async function logout(everywhere = false): Promise<void> {
+  await flush();
+  if (state.queue.length) {
+    toast("Есть несохранённые записи, а связи нет. Выйти можно, когда появится интернет.");
+    return;
+  }
   try {
     await postJson(everywhere ? "/api/auth/logout-all" : "/api/auth/logout");
-  } catch {
-    // Локально все одно виходимо.
+  } catch (err) {
+    if (!(err instanceof HttpError && err.status === 401)) {
+      toast("Нет связи с сервером. Выйти можно, когда появится интернет.");
+      return;
+    }
   }
   resetToAnon();
 }
-
-export const resetToAnon = (): void => {
-  clearCache();
-  if (history.state?.dialog) history.back();
-  setState({ phase: "anon", user: null, data: emptyData(), drive: noDrive, queue: [], dialog: null, active: null });
-};
 
 export const setUser = (user: User): void => {
   setState({ user });
@@ -428,19 +430,8 @@ export const removePhoto = (id: string): void => {
 
 export const setUploading = (delta: number): void => setState({ uploading: Math.max(0, state.uploading + delta) });
 
-/* Обчислення для вибраної машини */
-
-export const carRecords = (data: GarageData, carId: string | null) => ({
-  service: data.service.filter((r) => r.car === carId),
-  fuel: data.fuel.filter((r) => r.car === carId),
-  reminders: data.reminders.filter((r) => r.car === carId),
-  photos: data.photos.filter((p) => p.car === carId),
-});
-
-export const currentOdo = (carId: string | null): number | null => {
-  const { service, fuel } = carRecords(state.data, carId);
-  return carSummary(service, fuel, todayISO()).currentOdo;
-};
+export const currentOdo = (carId: string): number | null =>
+  carView(state.data, carId, todayISO()).summary.currentOdo;
 
 /** Запам'ятовує показане вікно, щоб той самий поріг не вискакував удруге. */
 export function dueReminderDialog(carId: string, afterSave: boolean): Dialog {
@@ -449,9 +440,7 @@ export function dueReminderDialog(carId: string, afterSave: boolean): Dialog {
   const changed = rows.filter((r) => r.status.level > r.reminder.notified);
   if (changed.length) {
     dispatch(
-      ...changed.map(
-        (r): Op => ({ type: "reminder.put", data: { ...r.reminder, notified: r.status.level } }),
-      ),
+      ...changed.map((r): Op => ({ type: "reminder.put", data: { ...r.reminder, notified: r.status.level } })),
     );
   }
   return { type: "notify", rows };

@@ -108,7 +108,7 @@ const connectDrive = async (client: Client, scope = `openid email ${DRIVE_SCOPE}
           refresh_token: "REFRESH-TOKEN-PLAIN",
           expires_in: 3600,
           scope,
-          id_token: idToken({ email: "me@gmail.com" }),
+          id_token: idToken({ email: "me@gmail.com", email_verified: true }),
         })
       : undefined;
   const res = await client.call(`/api/google/callback?state=${state}&code=abc`);
@@ -215,6 +215,31 @@ describe("вхід через Google", () => {
     expect((await owner.call("/api/state")).status).toBe(200);
   });
 
+  it("Диск без відомої пошти теж відключається при такому перехопленні", async () => {
+    const attacker = await register();
+    await db
+      .prepare("INSERT INTO google_connections (user_id, google_email, refresh_token_enc, connected_at) VALUES (?, NULL, 'x', 0)")
+      .bind(attacker.id)
+      .run();
+    const owner = newClient();
+    await loginWith(owner, { sub: crypto.randomUUID(), email: attacker.email, email_verified: true });
+    const state = await (await owner.call("/api/state")).json<{ drive: { connected: boolean } }>();
+    expect(state.drive.connected).toBe(false);
+  });
+
+  it("свій Диск на тій самій пошті лишається підключеним", async () => {
+    const { client, email, id } = await register();
+    await db
+      .prepare("INSERT INTO google_connections (user_id, google_email, refresh_token_enc, connected_at) VALUES (?, ?, 'x', 0)")
+      .bind(id, email.toUpperCase())
+      .run();
+    await client.call("/api/auth/logout", { body: {} });
+    const owner = newClient();
+    await loginWith(owner, { sub: crypto.randomUUID(), email, email_verified: true });
+    const state = await (await owner.call("/api/state")).json<{ drive: { connected: boolean } }>();
+    expect(state.drive.connected).toBe(true);
+  });
+
   it("чужий Диск відключається при такому перехопленні", async () => {
     const attacker = await register();
     await connectDrive(attacker.client);
@@ -250,6 +275,32 @@ describe("підключення Диска", () => {
     const state = await (await client.call("/api/state")).json<{ drive: { connected: boolean; email: string } }>();
     expect(state.drive).toMatchObject({ connected: true, email: "me@gmail.com" });
     expect(JSON.stringify(state)).not.toContain("TOKEN");
+  });
+
+  it("підміна доступів у посиланні: без підтвердженої пошти Диск не підключається", async () => {
+    const { client, id } = await register();
+    const start = await client.call("/api/google/drive/connect");
+    const state = new URL(start.headers.get("location") ?? "").searchParams.get("state");
+    googleHandler = (url) =>
+      url === "https://oauth2.googleapis.com/token"
+        ? json({ access_token: "a", refresh_token: "r", scope: DRIVE_SCOPE })
+        : undefined;
+    const res = await client.call(`/api/google/callback?state=${state}&code=abc`);
+    expect(res.headers.get("location")).toBe("/?drive=scope");
+    expect(await db.prepare("SELECT 1 FROM google_connections WHERE user_id = ?").bind(id).first()).toBeNull();
+  });
+
+  it("непідтверджена пошта Google теж не підходить для Диска", async () => {
+    const { client, id } = await register();
+    const start = await client.call("/api/google/drive/connect");
+    const state = new URL(start.headers.get("location") ?? "").searchParams.get("state");
+    googleHandler = (url) =>
+      url === "https://oauth2.googleapis.com/token"
+        ? json({ access_token: "a", refresh_token: "r", scope: DRIVE_SCOPE, id_token: idToken({ email: "x@gmail.com", email_verified: false }) })
+        : undefined;
+    const res = await client.call(`/api/google/callback?state=${state}&code=abc`);
+    expect(res.headers.get("location")).toBe("/?drive=scope");
+    expect(await db.prepare("SELECT 1 FROM google_connections WHERE user_id = ?").bind(id).first()).toBeNull();
   });
 
   it("без галочки про файли застосунку Диск не підключається", async () => {
@@ -484,6 +535,75 @@ describe("Google Таблиця", () => {
     expect(calls.some((c) => c.url.includes("?fields=spreadsheetId"))).toBe(true);
   });
 
+  it("таблиця в кошику вважається видаленою: створюється нова", async () => {
+    const { client } = await seeded();
+    googleHandler = sheetsApi;
+    await client.call("/api/google/sheet/export", { body: {} });
+    calls = [];
+    googleHandler = (url, init) =>
+      url.includes("/files/sheet-1?fields=trashed") ? json({ trashed: true }) : sheetsApi(url, init);
+    expect((await client.call("/api/google/sheet/export", { body: {} })).status).toBe(200);
+    expect(calls.some((c) => c.url.includes("?fields=spreadsheetId"))).toBe(true);
+  });
+
+  it.each([429, 500, 503])("тимчасова помилка Google %i не створює другу таблицю", async (status) => {
+    const { client, id } = await seeded();
+    googleHandler = sheetsApi;
+    await client.call("/api/google/sheet/export", { body: {} });
+    calls = [];
+    googleHandler = (url, init) =>
+      url.includes("/sheet-1?fields=sheets.properties") ? json({ error: {} }, status) : sheetsApi(url, init);
+    expect((await client.call("/api/google/sheet/export", { body: {} })).status).toBe(502);
+    expect(calls.some((c) => c.url.includes("?fields=spreadsheetId"))).toBe(false);
+    const row = await db.prepare("SELECT sheet_id FROM google_connections WHERE user_id = ?").bind(id).first<{ sheet_id: string }>();
+    expect(row?.sheet_id).toBe("sheet-1");
+  });
+
+  it("тимчасова помилка Диска не плодить папки", async () => {
+    const { client } = await seeded();
+    calls = [];
+    googleHandler = (url) => (url.includes("fields=trashed") ? json({ error: {} }, 503) : sheetsApi(url));
+    const res = await client.call("/api/google/sheet/export", { body: {} });
+    expect(res.status).toBe(502);
+    expect(calls.some((c) => c.url.startsWith("https://www.googleapis.com/drive/v3/files?") && c.init?.method === "POST")).toBe(false);
+  });
+
+  it("відновлення працює, навіть якщо один лист видалили", async () => {
+    const { client } = await seeded();
+    googleHandler = sheetsApi;
+    await client.call("/api/google/sheet/export", { body: {} });
+    const [write] = writes();
+    calls = [];
+    googleHandler = (url) => {
+      if (url.includes("/sheet-1?fields=sheets.properties")) {
+        return json({
+          sheets: ["Сводка", "Обслуживание", "Заправки", "Напоминания"].map((title, i) => ({ properties: { sheetId: i, title } })),
+        });
+      }
+      if (url.includes("values:batchGet")) {
+        // Запит із відсутнім листом Google відхилив би цілком.
+        if (decodeURIComponent(url).includes("Позиции")) return json({ error: "Unable to parse range" }, 400);
+        return json({
+          valueRanges: write.data
+            .filter((d) => d.range !== "Позиции")
+            .map((d) => ({ range: `'${d.range}'!A1:Z99`, values: d.values })),
+        });
+      }
+      return undefined;
+    };
+    const res = await client.call("/api/google/sheet/import", { body: {} });
+    expect(res.status).toBe(200);
+    expect((await res.json<{ backup: { fuel: unknown[] } }>()).backup.fuel).toHaveLength(2);
+  });
+
+  it("відновлення з видаленої таблиці пояснює причину", async () => {
+    const { client } = await seeded();
+    googleHandler = sheetsApi;
+    await client.call("/api/google/sheet/export", { body: {} });
+    googleHandler = (url) => (url.includes("/files/sheet-1?fields=trashed") ? json({ trashed: true }) : undefined);
+    expect((await client.call("/api/google/sheet/import", { body: {} })).status).toBe(404);
+  });
+
   it("відновлення з таблиці повертає дані у форматі бекапу", async () => {
     const { client } = await seeded();
     googleHandler = sheetsApi;
@@ -492,7 +612,7 @@ describe("Google Таблиця", () => {
     googleHandler = (url) =>
       url.includes("values:batchGet")
         ? json({ valueRanges: write.data.map((d) => ({ range: `'${d.range}'!A1:Z99`, values: d.values })) })
-        : undefined;
+        : sheetsApi(url);
     const res = await client.call("/api/google/sheet/import", { body: {} });
     const { backup } = await res.json<{ backup: { cars: { name: string }[]; fuel: { sum: number; date: string }[] } }>();
     expect(backup.cars[0].name).toBe("Тест");

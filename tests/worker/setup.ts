@@ -1,4 +1,4 @@
-import { applyD1Migrations } from "cloudflare:test";
+import { applyD1Migrations, type D1Migration } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeAll } from "vitest";
 

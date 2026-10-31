@@ -1,17 +1,16 @@
 import { useState, type FormEvent } from "react";
-import type { User } from "../../shared/types";
-import { HttpError, postJson } from "../lib/api";
-import { afterAuth, setUser, toast, useApp } from "../lib/store";
+import { LIMITS } from "../../shared/constants";
+import type { AuthResponse } from "../../shared/types";
+import { errorText, postJson } from "../lib/api";
+import { afterAuth, clearResetToken, toast, useStore } from "../lib/store";
 import { Odometer } from "./Odometer";
 import { Turnstile } from "./Turnstile";
 
 type Mode = "login" | "register" | "forgot" | "sent" | "reset";
 
-const errorText = (err: unknown): string =>
-  err instanceof HttpError ? err.message : "Нет связи с сервером. Проверь интернет и попробуй ещё раз.";
-
 export function AuthScreen() {
-  const { config, resetToken } = useApp();
+  const config = useStore((s) => s.config);
+  const resetToken = useStore((s) => s.resetToken);
   const [mode, setMode] = useState<Mode>(resetToken ? "reset" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,6 +19,8 @@ export function AuthScreen() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [captcha, setCaptcha] = useState<string | null>(null);
+  // Токен Turnstile одноразовий. Новий ключ перестворює віджет, і він видає наступний.
+  const [captchaRound, setCaptchaRound] = useState(0);
 
   const siteKey = config.turnstileSiteKey;
   const needsCaptcha = Boolean(siteKey) && (mode === "register" || mode === "forgot");
@@ -28,6 +29,7 @@ export function AuthScreen() {
     setMode(next);
     setError("");
     setCaptcha(null);
+    if (mode === "reset") clearResetToken();
   };
 
   const submit = async (e: FormEvent) => {
@@ -44,24 +46,24 @@ export function AuthScreen() {
     setBusy(true);
     try {
       if (mode === "login") {
-        const res = await postJson<{ user: User }>("/api/auth/login", { email, password });
-        setUser(res.user);
+        await postJson<AuthResponse>("/api/auth/login", { email, password });
         await afterAuth();
       } else if (mode === "register") {
-        const res = await postJson<{ user: User }>("/api/auth/register", { email, password, name, turnstile: captcha });
-        setUser(res.user);
+        await postJson<AuthResponse>("/api/auth/register", { email, password, name, turnstile: captcha });
         await afterAuth();
       } else if (mode === "forgot") {
         await postJson("/api/auth/forgot", { email, turnstile: captcha });
         setMode("sent");
       } else if (mode === "reset") {
         await postJson("/api/auth/reset", { token: resetToken, password });
-        toast("Пароль обновлён");
         await afterAuth();
+        clearResetToken();
+        toast("Пароль обновлён");
       }
     } catch (err) {
       setError(errorText(err));
       setCaptcha(null);
+      setCaptchaRound((round) => round + 1);
     } finally {
       setBusy(false);
     }
@@ -117,7 +119,12 @@ export function AuthScreen() {
             {mode === "register" && (
               <label className="field">
                 <span className="field-label">Как тебя зовут</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={80} />
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
+                  maxLength={LIMITS.personNameLength}
+                />
               </label>
             )}
             {mode !== "reset" && (
@@ -151,7 +158,7 @@ export function AuthScreen() {
               </label>
             )}
 
-            {needsCaptcha && siteKey && <Turnstile siteKey={siteKey} onToken={setCaptcha} />}
+            {needsCaptcha && siteKey && <Turnstile key={captchaRound} siteKey={siteKey} onToken={setCaptcha} />}
 
             {error && (
               <p className="form-error" role="alert">

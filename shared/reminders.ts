@@ -1,4 +1,6 @@
+import { LIMITS } from "./constants";
 import { fmtNum, plural } from "./format";
+import { parseOdo } from "./parse";
 import type { Reminder, ReminderLevel } from "./types";
 
 export const KM_THRESHOLDS = { first: 1000, second: 500 } as const;
@@ -62,7 +64,9 @@ export function reminderStatus(
       daysLeft > 0
         ? `${first ? "Через" : "через"} ${dayWord(daysLeft)}`
         : daysLeft === 0
-          ? first ? "Сегодня" : "сегодня"
+          ? first
+            ? "Сегодня"
+            : "сегодня"
           : `${first ? "Просрочено" : "просрочено"} на ${dayWord(-daysLeft)}`,
     );
   }
@@ -115,3 +119,65 @@ export const sortReminders = (
       if (ka !== kb) return ka - kb;
       return (a.status.daysLeft ?? Number.POSITIVE_INFINITY) - (b.status.daysLeft ?? Number.POSITIVE_INFINITY);
     });
+
+/**
+ * Рівень, про який вважаємо вже сказаним. Щойно створене чи змінене нагадування не вискакує
+ * відразу: вікно спрацює лише на наступному порозі. Без змін строку лишається те, що було.
+ */
+export function notifiedLevel(
+  due: Pick<Reminder, "dueOdo" | "dueDate">,
+  previous: Reminder | undefined,
+  currentOdo: number | null,
+  today: string,
+): ReminderLevel {
+  const unchanged = previous && previous.dueOdo === due.dueOdo && previous.dueDate === due.dueDate;
+  return unchanged ? previous.notified : reminderStatus(due, currentOdo, today).level;
+}
+
+/* Блок «Напомнить через…» у формі запису */
+
+export type ReminderDraft = { on: boolean; title: string; km: string; date: string };
+
+export const reminderDraft = (linked: Reminder | undefined, baseOdo: number | null): ReminderDraft => ({
+  on: Boolean(linked),
+  title: linked?.title ?? "",
+  km: linked?.dueOdo != null && baseOdo != null ? String(Math.max(0, linked.dueOdo - baseOdo)) : "",
+  date: linked?.dueDate ?? "",
+});
+
+export type BuildReminderOptions = {
+  car: string;
+  recordId: string;
+  baseOdo: number | null;
+  fallbackTitle: string;
+  linked?: Reminder;
+  today: string;
+  makeId: () => string;
+};
+
+/** null у `reminder` означає, що галочку зняли. */
+export function buildReminder(
+  draft: ReminderDraft,
+  opts: BuildReminderOptions,
+): { error: string } | { reminder: Reminder | null } {
+  if (!draft.on) return { reminder: null };
+  const km = parseOdo(draft.km);
+  if (km === "invalid") return { error: "В напоминании километры — только цифры." };
+  const date = draft.date || null;
+  if (!km && !date) return { error: "Укажи, через сколько километров или к какой дате напомнить." };
+  if (km && opts.baseOdo == null) return { error: "Чтобы считать километры, укажи пробег этой записи." };
+  const dueOdo = km && opts.baseOdo != null ? opts.baseOdo + km : null;
+  const due = { dueOdo, dueDate: date };
+  return {
+    reminder: {
+      id: opts.linked?.id ?? opts.makeId(),
+      car: opts.car,
+      title: (draft.title.trim() || opts.fallbackTitle).slice(0, LIMITS.titleLength),
+      ...due,
+      done: false,
+      doneDate: null,
+      notified: notifiedLevel(due, opts.linked, opts.baseOdo, opts.today),
+      recordId: opts.recordId,
+    },
+  };
+}

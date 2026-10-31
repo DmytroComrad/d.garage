@@ -154,7 +154,7 @@ describe("дані", () => {
   it("записи зберігаються, а позиції читаються назад", async () => {
     const { client } = await register();
     const res = await client.call("/api/ops", { body: { ops: [car(), service("s1"), fuelOp("f1")] } });
-    expect(await res.json()).toEqual({ rejected: [] });
+    expect(await res.json()).toEqual({ rejected: [], remapped: {} });
 
     const state = await (await client.call("/api/state")).json<{
       data: { cars: unknown[]; service: { sum: number; items: unknown[] }[]; fuel: { liters: number; full: boolean }[] };
@@ -180,7 +180,7 @@ describe("дані", () => {
     const res = await client.call("/api/ops", {
       body: { ops: [car("a", "Пассат"), car("b", "ПАССАТ")] },
     });
-    expect(await res.json()).toEqual({ rejected: [1] });
+    expect(await res.json()).toEqual({ rejected: [], remapped: { b: "a" } });
     const state = await (await client.call("/api/state")).json<{ data: { cars: unknown[] } }>();
     expect(state.data.cars).toHaveLength(1);
   });
@@ -188,7 +188,7 @@ describe("дані", () => {
   it("запис для неіснуючої машини не блокує решту черги", async () => {
     const { client } = await register();
     const res = await client.call("/api/ops", { body: { ops: [car(), service("bad", "ghost"), service("ok")] } });
-    expect(await res.json()).toEqual({ rejected: [1] });
+    expect(await res.json()).toEqual({ rejected: [1], remapped: {} });
     const state = await (await client.call("/api/state")).json<{ data: { service: { id: string }[] } }>();
     expect(state.data.service.map((s) => s.id)).toEqual(["ok"]);
   });
@@ -242,7 +242,7 @@ describe("ізоляція користувачів", () => {
     const b = await register();
     await a.client.call("/api/ops", { body: { ops: [car("mine", "Моя")] } });
     const res = await b.client.call("/api/ops", { body: { ops: [service("s9", "mine")] } });
-    expect(await res.json()).toEqual({ rejected: [0] });
+    expect(await res.json()).toEqual({ rejected: [0], remapped: {} });
   });
 
   it("чуже фото недоступне", async () => {

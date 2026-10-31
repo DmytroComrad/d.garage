@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
-import { BACKUP_ERRORS, backupFileName, backupToText, buildBackup, parseBackupText, type RawBackup } from "../../shared/backup";
+import { BACKUP_ERRORS, backupFileName, backupToText, buildBackup, parseBackupText } from "../../shared/backup";
+import { LIMITS } from "../../shared/constants";
 import { nameKey, todayISO } from "../../shared/format";
 import { buildSheets } from "../../shared/sheet";
-import { HttpError, postJson } from "../lib/api";
+import type { SheetExportResponse, SheetImportResponse } from "../../shared/types";
+import { HttpError, errorText, postJson } from "../lib/api";
 import { downloadFile } from "../lib/download";
-import { applyBackup, dispatch, flush, getState, openDialog, setDrive, toast, useApp } from "../lib/store";
-
-const errorText = (err: unknown): string => (err instanceof HttpError ? err.message : "Нет связи с сервером. Попробуй позже.");
+import { applyBackup, dispatch, flush, getState, openDialog, setDrive, toast, useStore } from "../lib/store";
 
 const handleDriveError = (err: unknown): void => {
   if (err instanceof HttpError && err.code === "drive_disconnected") {
@@ -16,8 +16,8 @@ const handleDriveError = (err: unknown): void => {
 };
 
 function BackupCard() {
-  const { data, active } = useApp();
-  const activeCar = data.cars.find((c) => c.id === active);
+  const data = useStore((s) => s.data);
+  const activeCar = useStore((s) => s.data.cars.find((c) => c.id === s.active));
   const today = todayISO();
 
   const copy = async (text: string) => {
@@ -32,7 +32,10 @@ function BackupCard() {
   return (
     <section className="sheet data-sheet">
       <h2 className="sheet-title">Файл-бэкап</h2>
-      <p className="muted">Текстовый файл со всеми записями. Хранить его не обязательно, но он пригодится, чтобы перенести гараж или передать машину другу.</p>
+      <p className="muted">
+        Текстовый файл со всеми записями. Хранить его не обязательно, но он пригодится, чтобы перенести гараж или
+        передать машину другу.
+      </p>
       <div className="btn-row">
         <button
           type="button"
@@ -128,7 +131,9 @@ function RestoreCard() {
 }
 
 function SheetCard() {
-  const { data, drive, config } = useApp();
+  const data = useStore((s) => s.data);
+  const drive = useStore((s) => s.drive);
+  const driveEnabled = useStore((s) => s.config.drive);
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [message, setMessage] = useState("");
 
@@ -137,7 +142,7 @@ function SheetCard() {
     setMessage("");
     try {
       await flush();
-      const res = await postJson<{ url: string; exportedAt: number }>("/api/google/sheet/export");
+      const res = await postJson<SheetExportResponse>("/api/google/sheet/export");
       setDrive({ ...getState().drive, sheetUrl: res.url, sheetExportedAt: res.exportedAt });
       toast("Таблица обновлена");
     } catch (err) {
@@ -152,7 +157,7 @@ function SheetCard() {
     setMessage("");
     try {
       await flush();
-      const res = await postJson<{ backup: RawBackup }>("/api/google/sheet/import");
+      const res = await postJson<SheetImportResponse>("/api/google/sheet/import");
       setMessage(applyBackup(res.backup));
     } catch (err) {
       handleDriveError(err);
@@ -180,7 +185,7 @@ function SheetCard() {
         Все числа считает сам сайт и записывает готовыми значениями, без формул. Поэтому суммы и расход в таблице
         совпадают с сайтом до копейки, какой бы ни была локаль таблицы.
       </p>
-      {config.drive && drive.connected && (
+      {driveEnabled && drive.connected && (
         <>
           <div className="btn-row">
             <button type="button" className="btn btn-ink" disabled={busy !== null} onClick={() => void exportSheet()}>
@@ -200,7 +205,11 @@ function SheetCard() {
           {drive.sheetExportedAt && (
             <p className="muted">Обновлена {new Date(drive.sheetExportedAt * 1000).toLocaleString("ru-RU")}</p>
           )}
-          {message && <p className="form-ok" role="status">{message}</p>}
+          {message && (
+            <p className="form-ok" role="status">
+              {message}
+            </p>
+          )}
         </>
       )}
       <div className="btn-row">
@@ -213,9 +222,10 @@ function SheetCard() {
 }
 
 function DriveCard() {
-  const { drive, config } = useApp();
+  const drive = useStore((s) => s.drive);
+  const driveEnabled = useStore((s) => s.config.drive);
   const [asking, setAsking] = useState(false);
-  if (!config.drive) return null;
+  if (!driveEnabled) return null;
 
   const disconnect = async () => {
     try {
@@ -239,7 +249,12 @@ function DriveCard() {
       {drive.connected ? (
         <>
           <p>
-            Подключён{drive.email ? <>: <b>{drive.email}</b></> : null}
+            Подключён
+            {drive.email ? (
+              <>
+                : <b>{drive.email}</b>
+              </>
+            ) : null}
           </p>
           {asking ? (
             <div className="confirm-block">
@@ -269,7 +284,7 @@ function DriveCard() {
 }
 
 function CarRow({ id, name }: { id: string; name: string }) {
-  const { data } = useApp();
+  const cars = useStore((s) => s.data.cars);
   const [value, setValue] = useState(name);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
@@ -277,7 +292,7 @@ function CarRow({ id, name }: { id: string; name: string }) {
   const save = () => {
     const next = value.trim();
     if (!next) return setError("Напиши название.");
-    if (data.cars.some((c) => c.id !== id && nameKey(c.name) === nameKey(next))) return setError("Такая машина уже есть.");
+    if (cars.some((c) => c.id !== id && nameKey(c.name) === nameKey(next))) return setError("Такая машина уже есть.");
     setError("");
     dispatch({ type: "car.put", data: { id, name: next } });
     toast("Сохранено");
@@ -285,7 +300,12 @@ function CarRow({ id, name }: { id: string; name: string }) {
 
   return (
     <li className="car-row">
-      <input aria-label="Название машины" value={value} onChange={(e) => setValue(e.target.value)} maxLength={80} />
+      <input
+        aria-label="Название машины"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        maxLength={LIMITS.carNameLength}
+      />
       <div className="btn-row">
         <button type="button" className="btn btn-quiet btn-small" disabled={value.trim() === name} onClick={save}>
           Сохранить
@@ -317,12 +337,12 @@ function CarRow({ id, name }: { id: string; name: string }) {
 }
 
 function CarsCard() {
-  const { data } = useApp();
+  const cars = useStore((s) => s.data.cars);
   return (
     <section className="sheet data-sheet">
       <h2 className="sheet-title">Машины и настройки</h2>
       <ul className="car-rows">
-        {data.cars.map((c) => (
+        {cars.map((c) => (
           <CarRow key={c.id} id={c.id} name={c.name} />
         ))}
       </ul>

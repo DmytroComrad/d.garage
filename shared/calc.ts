@@ -17,32 +17,46 @@ export type FuelCalc = {
 const byOdoThenDate = (a: FuelRecord, b: FuelRecord): number =>
   a.odo - b.odo || a.date.localeCompare(b.date);
 
-/** Розрахунки для кожної заправки (п. 2.1). Заправки — лише однієї машини. */
+/**
+ * Розрахунки для кожної заправки (п. 2.1). Заправки — лише однієї машини.
+ * Один прохід за пробігом із накопиченням літрів. Заправки з однаковим пробігом
+ * обробляються групою: межа «odo ≤ поточний» включає їх усі.
+ */
 export function fuelCalcs(fuel: FuelRecord[]): Map<string, FuelCalc> {
   const sorted = [...fuel].sort(byOdoThenDate);
   const out = new Map<string, FuelCalc>();
 
-  for (const rec of sorted) {
-    const earlier = sorted.filter((f) => f.odo < rec.odo);
-    const prevOdo = earlier.length ? Math.max(...earlier.map((f) => f.odo)) : null;
+  let totalMl = 0;
+  let prevOdo: number | null = null;
+  let lastFullOdo: number | null = null;
+  let totalMlAtLastFull = 0;
 
-    let consumption: number | null = null;
-    if (rec.full) {
-      const fulls = earlier.filter((f) => f.full);
-      if (fulls.length) {
-        const prevFull = Math.max(...fulls.map((f) => f.odo));
-        const liters = sumLiters(
-          sorted.filter((f) => f.odo > prevFull && f.odo <= rec.odo).map((f) => f.liters),
-        );
-        consumption = (liters / (rec.odo - prevFull)) * 100;
-      }
+  for (let start = 0; start < sorted.length; ) {
+    const odo = sorted[start].odo;
+    let end = start;
+    let groupHasFull = false;
+    while (end < sorted.length && sorted[end].odo === odo) {
+      totalMl += Math.round(sorted[end].liters * 1000);
+      groupHasFull ||= sorted[end].full;
+      end++;
     }
 
-    out.set(rec.id, {
-      price: rec.liters > 0 ? rec.sum / rec.liters : 0,
-      sinceLast: prevOdo == null ? null : rec.odo - prevOdo,
-      consumption,
-    });
+    for (let i = start; i < end; i++) {
+      const rec = sorted[i];
+      out.set(rec.id, {
+        price: rec.liters > 0 ? rec.sum / rec.liters : 0,
+        sinceLast: prevOdo == null ? null : odo - prevOdo,
+        consumption:
+          rec.full && lastFullOdo != null ? ((totalMl - totalMlAtLastFull) / 1000 / (odo - lastFullOdo)) * 100 : null,
+      });
+    }
+
+    prevOdo = odo;
+    if (groupHasFull) {
+      lastFullOdo = odo;
+      totalMlAtLastFull = totalMl;
+    }
+    start = end;
   }
   return out;
 }
@@ -61,8 +75,7 @@ export type FuelSummary = {
 };
 
 /** Зведення по пальному (п. 2.2). */
-export function fuelSummary(fuel: FuelRecord[]): FuelSummary {
-  const calcs = fuelCalcs(fuel);
+export function fuelSummary(fuel: FuelRecord[], calcs: Map<string, FuelCalc> = fuelCalcs(fuel)): FuelSummary {
   const fulls = fuel.filter((f) => f.full).sort(byOdoThenDate);
 
   let avg: number | null = null;
@@ -143,7 +156,11 @@ export function carSummary(service: ServiceRecord[], fuel: FuelRecord[], today: 
     : null;
 
   const byCat = new Map<string, number[]>();
-  for (const r of service) byCat.set(r.cat, [...(byCat.get(r.cat) ?? []), r.sum]);
+  for (const r of service) {
+    const sums = byCat.get(r.cat);
+    if (sums) sums.push(r.sum);
+    else byCat.set(r.cat, [r.sum]);
+  }
   const categories = [...byCat.entries()]
     .map(([name, sums]) => ({ name, sum: sumMoney(sums) }))
     .filter((c) => c.sum !== 0)

@@ -359,3 +359,151 @@ test("ни одна вкладка не скроллится по горизон
     }
   }
 });
+
+test("после ошибки регистрации проверка на робота выдаётся заново", async ({ page }) => {
+  // Заглушка Turnstile: настоящий виджет не пропускает автоматический браузер.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __renders: number; turnstile: unknown };
+    w.__renders = 0;
+    w.turnstile = {
+      render: (_el: unknown, opts: { callback: (t: string) => void }) => {
+        w.__renders++;
+        setTimeout(() => opts.callback(`token-${w.__renders}`), 0);
+        return "widget";
+      },
+      remove: () => undefined,
+    };
+  });
+  await page.route("**/api/config", async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), turnstileSiteKey: "test-key" } });
+  });
+
+  const { email, password } = await register(page);
+  await page.getByRole("button", { name: /Профиль/ }).click();
+  await page.getByRole("button", { name: "Выйти", exact: true }).click();
+  await page.getByRole("button", { name: "Создать", exact: true }).click();
+
+  await page.getByLabel("Почта").fill(email);
+  await page.getByLabel("Пароль").fill(password);
+  await page.getByRole("button", { name: "Создать гараж" }).click();
+  await expect(page.getByRole("alert")).toContainText("уже зарегистрирована");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __renders: number }).__renders)).toBeGreaterThan(1);
+
+  await page.getByLabel("Почта").fill(`e2e-${crypto.randomUUID().slice(0, 12)}@example.com`);
+  await page.getByRole("button", { name: "Создать гараж" }).click();
+  await expect(page.getByRole("heading", { name: "Гараж пуст" })).toBeVisible();
+});
+
+test("незбережені записи переживають кінець сесії й доходять після входу", async ({ page, context }) => {
+  const { email, password } = await register(page);
+  await addCar(page, "Тест");
+  await page.waitForLoadState("networkidle");
+
+  await context.setOffline(true);
+  await addFuel(page, { odo: "1000", liters: "40", sum: "2000", station: "После сессии" });
+  await expect(page.getByText(/Несохранённых изменений: 1/)).toBeVisible();
+
+  // Сесія закінчилась, поки пристрій був без мережі. Перезавантаження не має стерти чергу.
+  await context.clearCookies();
+  await context.setOffline(false);
+  await page.reload();
+  await page.getByRole("heading", { name: "Вход" }).waitFor();
+  await page.reload();
+  await page.getByRole("heading", { name: "Вход" }).waitFor();
+
+  await page.getByLabel("Почта").fill(email);
+  await page.getByLabel("Пароль").fill(password);
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await page.getByRole("heading", { level: 1, name: "Тест" }).waitFor();
+  await openTab(page, "Заправки");
+  await expect(page.locator(".rec-title").first()).toHaveText("После сессии");
+
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await openTab(page, "Заправки");
+  await expect(page.locator(".rec-title").first()).toHaveText("После сессии");
+});
+
+test("другой аккаунт не получает чужие незбережені записи", async ({ page, context }) => {
+  await register(page);
+  await addCar(page, "Чужая");
+  await page.waitForLoadState("networkidle");
+  await context.setOffline(true);
+  await addFuel(page, { odo: "1000", liters: "40", sum: "2000" });
+  await context.clearCookies();
+  await context.setOffline(false);
+  await page.reload();
+  await page.getByRole("heading", { name: "Вход" }).waitFor();
+
+  await page.getByRole("button", { name: "Создать", exact: true }).click();
+  await page.getByLabel("Почта").fill(`e2e-${crypto.randomUUID().slice(0, 12)}@example.com`);
+  await page.getByLabel("Пароль").fill("correct horse battery");
+  await page.getByRole("button", { name: "Создать гараж" }).click();
+  await expect(page.getByRole("heading", { name: "Гараж пуст" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Гараж пуст" })).toBeVisible();
+});
+
+test("выход без интернета не теряет записи и не притворяется выходом", async ({ page, context }) => {
+  await register(page);
+  await addCar(page, "Тест");
+  await page.waitForLoadState("networkidle");
+  await context.setOffline(true);
+  await addFuel(page, { odo: "1000", liters: "40", sum: "2000", station: "Без сети" });
+
+  await page.getByRole("button", { name: /Профиль/ }).click();
+  await page.getByRole("button", { name: "Выйти", exact: true }).click();
+  await expect(page.getByText(/Выйти можно, когда появится интернет/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Вход" })).toBeHidden();
+  await page.keyboard.press("Escape");
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.getByText("Нет связи с сервером.")).toBeHidden();
+  await page.reload();
+  await openTab(page, "Заправки");
+  await expect(page.locator(".rec-title").first()).toHaveText("Без сети");
+});
+
+test("ссылка сброса пароля видна и тому, кто уже вошёл, а отмена возвращает в гараж", async ({ page }) => {
+  await register(page);
+  await addCar(page, "Тест");
+  await page.goto("/?reset=not-a-real-token-but-long-enough");
+  await expect(page.getByRole("heading", { name: "Новый пароль" })).toBeVisible();
+  expect(page.url()).not.toContain("reset=");
+
+  await page.getByRole("textbox", { name: /Пароль/ }).fill("brand new password");
+  await page.getByRole("button", { name: "Сохранить пароль" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Ссылка устарела. Запроси новую.");
+
+  await page.getByRole("button", { name: "Вернуться ко входу" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Тест" })).toBeVisible();
+});
+
+test("тема: тёмная по системе, выбор в профиле важнее и переживает перезагрузку", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await register(page);
+  const theme = () => page.evaluate(() => document.documentElement.dataset.theme);
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(await theme()).toBe("dark");
+  expect(await bg()).toBe("rgb(13, 16, 21)");
+
+  await page.getByRole("button", { name: /Профиль/ }).click();
+  await page.getByRole("button", { name: "Светлая" }).click();
+  expect(await theme()).toBe("light");
+  expect(await bg()).toBe("rgb(238, 241, 245)");
+
+  await page.reload();
+  await page.getByRole("heading", { name: "Гараж пуст" }).waitFor();
+  expect(await theme()).toBe("light");
+
+  await page.getByRole("button", { name: /Профиль/ }).click();
+  await page.getByRole("button", { name: "Как в системе" }).click();
+  expect(await theme()).toBe("dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect.poll(theme).toBe("light");
+});

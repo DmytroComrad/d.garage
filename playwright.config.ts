@@ -14,7 +14,8 @@ export default defineConfig({
   webServer: {
     command: "npx wrangler d1 migrations apply garage-e2e --local -c wrangler.e2e.jsonc && npx vite --port 5199 --strictPort",
     url: "http://localhost:5199/api/config",
-    reuseExistingServer: true,
+    // Завжди свіжий сервер: команда вище застосовує нові міграції, а чужий сервер їх би пропустив.
+    reuseExistingServer: false,
     timeout: 120_000,
     env: { WRANGLER_CONFIG: "wrangler.e2e.jsonc", CI: "1" },
   },

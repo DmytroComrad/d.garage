@@ -53,8 +53,6 @@ export const plural = (n: number, forms: [string, string, string]): string => {
   return forms[2];
 };
 
-export const pluralRecords = (n: number): string => plural(n, ["запись", "записи", "записей"]);
-
 export const todayISO = (now: Date = new Date()): string => {
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");

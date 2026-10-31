@@ -17,6 +17,16 @@ export const emptyData = (): GarageData => ({
   demo: false,
 });
 
+/** Запис переїхав на іншу машину: його фото й нагадування їдуть разом із ним. */
+const moveLinked = (data: GarageData, recordId: string, car: string): Pick<GarageData, "photos" | "reminders"> => ({
+  photos: data.photos.some((p) => p.recordId === recordId && p.car !== car)
+    ? data.photos.map((p) => (p.recordId === recordId ? { ...p, car } : p))
+    : data.photos,
+  reminders: data.reminders.some((r) => r.recordId === recordId && r.car !== car)
+    ? data.reminders.map((r) => (r.recordId === recordId ? { ...r, car } : r))
+    : data.reminders,
+});
+
 /** Той самий ефект, що й на сервері: так інтерфейс оновлюється одразу, навіть без мережі. */
 export function applyOp(data: GarageData, op: Op): GarageData {
   switch (op.type) {
@@ -32,7 +42,7 @@ export function applyOp(data: GarageData, op: Op): GarageData {
         photos: data.photos.filter((p) => p.car !== op.id),
       };
     case "service.put":
-      return { ...data, service: upsert(data.service, op.data) };
+      return { ...data, service: upsert(data.service, op.data), ...moveLinked(data, op.data.id, op.data.car) };
     case "service.del":
       return {
         ...data,
@@ -40,7 +50,7 @@ export function applyOp(data: GarageData, op: Op): GarageData {
         photos: data.photos.filter((p) => p.recordId !== op.id),
       };
     case "fuel.put":
-      return { ...data, fuel: upsert(data.fuel, op.data) };
+      return { ...data, fuel: upsert(data.fuel, op.data), ...moveLinked(data, op.data.id, op.data.car) };
     case "fuel.del":
       return {
         ...data,
@@ -55,5 +65,29 @@ export function applyOp(data: GarageData, op: Op): GarageData {
       return { ...data, demo: op.value };
     case "all.del":
       return emptyData();
+  }
+}
+
+/** Операція для машини, яку об'єднали з іншою: переводимо її на справжній id. */
+export function retargetOp(op: Op, aliases: ReadonlyMap<string, string>): Op {
+  switch (op.type) {
+    case "service.put": {
+      const car = aliases.get(op.data.car);
+      return car ? { ...op, data: { ...op.data, car } } : op;
+    }
+    case "fuel.put": {
+      const car = aliases.get(op.data.car);
+      return car ? { ...op, data: { ...op.data, car } } : op;
+    }
+    case "reminder.put": {
+      const car = aliases.get(op.data.car);
+      return car ? { ...op, data: { ...op.data, car } } : op;
+    }
+    case "car.del": {
+      const id = aliases.get(op.id);
+      return id ? { ...op, id } : op;
+    }
+    default:
+      return op;
   }
 }

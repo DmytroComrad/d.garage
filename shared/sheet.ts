@@ -1,4 +1,4 @@
-import { carSummary, fuelCalcs, fuelSummary, sumMoney } from "./calc";
+import { carSummary, fuelCalcs, fuelSummary } from "./calc";
 import { itemKindLabel } from "./constants";
 import { parseDecimal } from "./parse";
 import type { RawBackup } from "./backup";
@@ -222,7 +222,7 @@ const readNum = (v: unknown): number | null => {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v !== "string" || v.trim() === "") return null;
   const parsed = parseDecimal(v);
-  return parsed == null || Number.isNaN(parsed) ? null : parsed;
+  return typeof parsed === "number" ? parsed : null;
 };
 
 const readStr = (v: unknown): string => (v == null ? "" : String(v).trim());
@@ -326,9 +326,3 @@ export function sheetsToBackup(tabs: Record<string, unknown[][] | undefined>): R
     reminders,
   };
 }
-
-/** Контрольна сума для тестів: те, що показує сайт, дорівнює сумі рядків таблиці. */
-export const sheetColumnTotal = (sheet: Sheet, title: string): number => {
-  const i = sheet.columns.findIndex((c) => c.title === title);
-  return sumMoney(sheet.rows.map((r) => (typeof r[i] === "number" ? (r[i] as number) : 0)));
-};

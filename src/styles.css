@@ -5,7 +5,7 @@
  */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   --bg: #eef1f5;
   --surface: #ffffff;
@@ -40,29 +40,7 @@
   --topbar: 60px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0d1015;
-    --surface: #161a21;
-    --surface-2: #1c212a;
-    --ink: #e8ecf1;
-    --ink-2: #a7b1bf;
-    --ink-3: #808b9b;
-    --line: #283040;
-    --service: #4f86ec;
-    --service-btn: #3b72de;
-    --service-soft: #1a2740;
-    --fuel: #c98112;
-    --fuel-btn: #c98112;
-    --fuel-btn-ink: #14171c;
-    --fuel-soft: #2d2314;
-    --good: #4cc47f;
-    --good-soft: #14291d;
-    --bad: #f07167;
-    --bad-soft: #331816;
-  }
-}
-
+/* Тему ставить public/theme.js ще до першого малювання: і за системою, і за вибором у профілі. */
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #0d1015;
@@ -83,10 +61,6 @@
   --good-soft: #14291d;
   --bad: #f07167;
   --bad-soft: #331816;
-}
-
-:root[data-theme="light"] {
-  color-scheme: light;
 }
 
 *,

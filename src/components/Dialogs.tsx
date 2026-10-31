@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { LIMITS } from "../../shared/constants";
 import { reminderText, type RemindersRow } from "../../shared/reminders";
 import type { Photo } from "../../shared/types";
-import { HttpError, del, postJson } from "../lib/api";
+import { del, errorText, postJson } from "../lib/api";
 import { driveFileUrl, photoUrl } from "../lib/photos";
 import {
   closeDialog,
-  getState,
   logout,
   markReminderDone,
   removePhoto,
@@ -14,15 +14,16 @@ import {
   setTheme,
   setUser,
   toast,
-  useApp,
+  useStore,
   type Theme,
 } from "../lib/store";
-import { CarForm, FuelForm, ReminderForm, ServiceForm } from "./Forms";
+import { CarForm } from "./forms/CarForm";
+import { FuelForm } from "./forms/FuelForm";
+import { ReminderForm } from "./forms/ReminderForm";
+import { ServiceForm } from "./forms/ServiceForm";
 import { ChevronIcon, CloseIcon, LampIcon } from "./icons";
 import { Modal } from "./Modal";
 import { Mono } from "./Mono";
-
-const errorText = (err: unknown): string => (err instanceof HttpError ? err.message : "Нет связи с сервером. Попробуй позже.");
 
 function NotifyDialog({ rows }: { rows: RemindersRow[] }) {
   const [done, setDone] = useState<string[]>([]);
@@ -35,7 +36,9 @@ function NotifyDialog({ rows }: { rows: RemindersRow[] }) {
             <span className="lamp-icon">
               <LampIcon />
             </span>
-            <span className="lamp-text"><Mono text={reminderText(status, reminder.title)} /></span>
+            <span className="lamp-text">
+              <Mono text={reminderText(status, reminder.title)} />
+            </span>
             {done.includes(reminder.id) ? (
               <span className="muted">Сделано</span>
             ) : (
@@ -92,7 +95,9 @@ function CopyDialog({ text }: { text: string }) {
 }
 
 function AccountDialog() {
-  const { user, theme, config } = useApp();
+  const user = useStore((s) => s.user);
+  const theme = useStore((s) => s.theme);
+  const googleLogin = useStore((s) => s.config.googleLogin);
   const [name, setName] = useState(user?.name ?? "");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -128,10 +133,7 @@ function AccountDialog() {
 
   const deleteAccount = async () => {
     try {
-      await postJson(
-        "/api/auth/delete-account",
-        user.hasPassword ? { password: confirm } : { confirm },
-      );
+      await postJson("/api/auth/delete-account", user.hasPassword ? { password: confirm } : { confirm });
       resetToAnon();
       toast("Аккаунт удалён");
     } catch (err) {
@@ -151,8 +153,13 @@ function AccountDialog() {
         <label className="field">
           <span className="field-label">Имя</span>
           <span className="input-with-action">
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
-            <button type="button" className="input-action" disabled={name.trim() === user.name} onClick={() => void saveName()}>
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={LIMITS.personNameLength} />
+            <button
+              type="button"
+              className="input-action"
+              disabled={name.trim() === user.name}
+              onClick={() => void saveName()}
+            >
               Сохранить
             </button>
           </span>
@@ -184,7 +191,12 @@ function AccountDialog() {
           {user.hasPassword && (
             <label className="field">
               <span className="field-label">Текущий пароль</span>
-              <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+              />
             </label>
           )}
           <label className="field">
@@ -202,7 +214,7 @@ function AccountDialog() {
           )}
         </details>
 
-        {config.googleLogin && (
+        {googleLogin && (
           <div className="field">
             <span className="field-label">Вход через Google</span>
             {user.hasGoogle ? (
@@ -230,7 +242,9 @@ function AccountDialog() {
             Все машины и записи удалятся без возможности восстановить. Файлы на Google Диске останутся у тебя.
           </p>
           <label className="field">
-            <span className="field-label">{user.hasPassword ? "Пароль для подтверждения" : "Напиши свою почту для подтверждения"}</span>
+            <span className="field-label">
+              {user.hasPassword ? "Пароль для подтверждения" : "Напиши свою почту для подтверждения"}
+            </span>
             <input
               type={user.hasPassword ? "password" : "text"}
               autoComplete="off"
@@ -253,6 +267,7 @@ function AccountDialog() {
 }
 
 function Lightbox({ photos, index }: { photos: Photo[]; index: number }) {
+  const connected = useStore((s) => s.drive.connected);
   const [i, setI] = useState(index);
   const [asking, setAsking] = useState(false);
   const [list, setList] = useState(photos);
@@ -313,7 +328,7 @@ function Lightbox({ photos, index }: { photos: Photo[]; index: number }) {
           {i + 1} / {list.length}
         </span>
         <span className="spacer" />
-        {getState().drive.connected && (
+        {connected && (
           <a className="btn btn-small btn-on-dark" href={driveFileUrl(photo)} target="_blank" rel="noreferrer">
             На Диске
           </a>
@@ -348,8 +363,21 @@ function Lightbox({ photos, index }: { photos: Photo[]; index: number }) {
   );
 }
 
+const Toast = () => {
+  const toastState = useStore((s) => s.toast);
+  return (
+    <div className="toast-host" role="status" aria-live="polite">
+      {toastState && (
+        <div key={toastState.id} className="toast">
+          {toastState.text}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export function Dialogs() {
-  const { dialog, toast: toastState } = useApp();
+  const dialog = useStore((s) => s.dialog);
   return (
     <>
       {dialog?.type === "fuel" && <FuelForm record={dialog.record} car={dialog.car} />}
@@ -360,13 +388,7 @@ export function Dialogs() {
       {dialog?.type === "copy" && <CopyDialog text={dialog.text} />}
       {dialog?.type === "account" && <AccountDialog />}
       {dialog?.type === "lightbox" && <Lightbox photos={dialog.photos} index={dialog.index} />}
-      <div className="toast-host" role="status" aria-live="polite">
-        {toastState && (
-          <div key={toastState.id} className="toast">
-            {toastState.text}
-          </div>
-        )}
-      </div>
+      <Toast />
     </>
   );
 }

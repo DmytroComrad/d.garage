@@ -1,3 +1,8 @@
+import { LIMITS } from "./constants";
+
+/** Результат розбору поля: число, порожньо або щось, що числом не є. */
+export type Parsed = number | null | "invalid";
+
 const stripUnits = (value: string): string =>
   value
     .replace(/[\s   ]/g, "")
@@ -6,12 +11,13 @@ const stripUnits = (value: string): string =>
     .replace(/км/gi, "")
     .replace(/л/gi, "");
 
-/** Пробіг: крапки й коми — це лише роздільники тисяч. Порожньо → null, сміття → NaN. */
-export function parseOdo(raw: string): number | null {
+/** Пробіг: крапки й коми — це лише роздільники тисяч. */
+export function parseOdo(raw: string): Parsed {
   const value = stripUnits(raw).replace(/[.,]/g, "");
   if (value === "") return null;
-  if (!/^\d+$/.test(value)) return NaN;
-  return Number(value);
+  if (!/^\d+$/.test(value)) return "invalid";
+  const odo = Number(value);
+  return odo > LIMITS.maxOdo ? "invalid" : odo;
 }
 
 /**
@@ -21,7 +27,7 @@ export function parseOdo(raw: string): number | null {
  * - для грошей один роздільник і рівно 3 цифри після нього: теж тисячі;
  * - інакше: десятковий.
  */
-export function parseDecimal(raw: string, opts: { money?: boolean } = {}): number | null {
+export function parseDecimal(raw: string, opts: { money?: boolean } = {}): Parsed {
   let value = stripUnits(raw);
   if (value === "") return null;
 
@@ -44,8 +50,15 @@ export function parseDecimal(raw: string, opts: { money?: boolean } = {}): numbe
     }
   }
 
-  if (!/^\d*\.?\d+$/.test(value)) return NaN;
+  if (!/^\d*\.?\d+$/.test(value)) return "invalid";
   return Number(value);
 }
 
-export const parseMoney = (raw: string): number | null => parseDecimal(raw, { money: true });
+export const parseMoney = (raw: string): Parsed => parseDecimal(raw, { money: true });
+
+/** Справжня календарна дата YYYY-MM-DD: 2026-02-31 і 2026-13-45 не проходять. */
+export const isIsoDate = (value: unknown): value is string => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
+};

@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { LIMITS } from "../shared/constants";
 import { nameKey } from "../shared/format";
+import { retargetOp } from "../shared/ops";
 import { opsRequestSchema } from "../shared/schema";
-import type { Car, FuelRecord, GarageData, Op, Photo, Reminder, ServiceRecord } from "../shared/types";
+import type { Car, FuelRecord, GarageData, Op, OpsResponse, Photo, Reminder, ServiceRecord } from "../shared/types";
 import { limitApi, readJson } from "./guard";
 import { requireUser } from "./session";
-import { ApiError, type AppEnv } from "./types";
+import { ApiError, type AppEnv, type SessionUser } from "./types";
 
 type ServiceRow = {
   id: string; car_id: string; date: string; odo: number | null; cat: string; what: string;
@@ -17,7 +18,7 @@ type FuelRow = {
 };
 type ReminderRow = {
   id: string; car_id: string; title: string; due_odo: number | null; due_date: string | null;
-  done: number; done_date: string | null; notified: number; record_id: string | null;
+  done: number; done_date: string | null; notified: Reminder["notified"]; record_id: string | null;
 };
 export type PhotoRow = {
   id: string; car_id: string; kind: string; record_id: string | null; drive_id: string; name: string;
@@ -86,13 +87,23 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
         dueDate: r.due_date,
         done: r.done === 1,
         doneDate: r.done_date,
-        notified: (r.notified as Reminder["notified"]) ?? 0,
+        notified: r.notified,
         recordId: r.record_id,
       }),
     ),
     photos: (photos.results as PhotoRow[]).map(photoFromRow),
   };
 }
+
+/** Запис переїхав на іншу машину: фото й нагадування їдуть разом із ним. */
+const moveLinked = (db: D1Database, userId: string, recordId: string, car: string): D1PreparedStatement[] => [
+  db
+    .prepare("UPDATE photos SET car_id = ?1 WHERE user_id = ?2 AND record_id = ?3 AND car_id <> ?1")
+    .bind(car, userId, recordId),
+  db
+    .prepare("UPDATE reminders SET car_id = ?1 WHERE user_id = ?2 AND record_id = ?3 AND car_id <> ?1")
+    .bind(car, userId, recordId),
+];
 
 const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStatement[] => {
   switch (op.type) {
@@ -121,6 +132,7 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
                items = excluded.items`,
           )
           .bind(userId, r.id, r.car, r.date, r.odo, r.cat, r.what, r.where, r.sum, r.note, JSON.stringify(r.items)),
+        ...moveLinked(db, userId, r.id, r.car),
       ];
     }
     case "service.del":
@@ -140,6 +152,7 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
                sum = excluded.sum, station = excluded.station, full = excluded.full, note = excluded.note`,
           )
           .bind(userId, r.id, r.car, r.date, r.odo, r.liters, r.sum, r.station, r.full ? 1 : 0, r.note),
+        ...moveLinked(db, userId, r.id, r.car),
       ];
     }
     case "fuel.del":
@@ -175,7 +188,7 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
 };
 
 /** Межі на користувача: база має рости повільно, навіть якщо хтось напише скрипт. */
-async function checkQuota(db: D1Database, userId: string, ops: Op[]): Promise<void> {
+function checkQuota(user: SessionUser, ops: Op[]): void {
   const adds = { car: 0, service: 0, fuel: 0, reminder: 0 };
   for (const op of ops) {
     if (op.type === "car.put") adds.car++;
@@ -183,46 +196,89 @@ async function checkQuota(db: D1Database, userId: string, ops: Op[]): Promise<vo
     if (op.type === "fuel.put") adds.fuel++;
     if (op.type === "reminder.put") adds.reminder++;
   }
-  if (!adds.car && !adds.service && !adds.fuel && !adds.reminder) return;
-
-  const row = await db
-    .prepare(
-      `SELECT (SELECT COUNT(*) FROM cars WHERE user_id = ?1) AS cars,
-              (SELECT COUNT(*) FROM service_records WHERE user_id = ?1) AS service,
-              (SELECT COUNT(*) FROM fuel_records WHERE user_id = ?1) AS fuel,
-              (SELECT COUNT(*) FROM reminders WHERE user_id = ?1) AS reminders`,
-    )
-    .bind(userId)
-    .first<{ cars: number; service: number; fuel: number; reminders: number }>();
-  if (!row) return;
+  // Запас на один запит: оновлення наявних записів теж рахуються як додавання.
   if (
-    row.cars + adds.car > LIMITS.cars + LIMITS.opsPerRequest ||
-    row.service + adds.service > LIMITS.service ||
-    row.fuel + adds.fuel > LIMITS.fuel ||
-    row.reminders + adds.reminder > LIMITS.reminders
+    (adds.car && user.cars_count + adds.car > LIMITS.cars + LIMITS.opsPerRequest) ||
+    (adds.service && user.service_count + adds.service > LIMITS.service + LIMITS.opsPerRequest) ||
+    (adds.fuel && user.fuel_count + adds.fuel > LIMITS.fuel + LIMITS.opsPerRequest) ||
+    (adds.reminder && user.reminders_count + adds.reminder > LIMITS.reminders + LIMITS.opsPerRequest)
   ) {
     throw new ApiError(413, "Достигнут лимит записей на аккаунт.");
   }
 }
 
+type IndexedOp = { op: Op; index: number };
+
+/**
+ * Дві машини з однаковою назвою бути не може, але два пристрої без мережі могли створити їх незалежно.
+ * Нова машина з уже наявною назвою зливається з нею, а її записи переходять туди ж, а не губляться.
+ * Перейменування наявної машини на зайняту назву лишається помилкою.
+ */
+async function mergeDuplicateCars(
+  db: D1Database,
+  userId: string,
+  ops: Op[],
+): Promise<{ ops: IndexedOp[]; remapped: Map<string, string> }> {
+  const indexed = ops.map((op, index) => ({ op, index }));
+  const remapped = new Map<string, string>();
+  if (!ops.some((op) => op.type === "car.put")) return { ops: indexed, remapped };
+
+  const { results } = await db
+    .prepare("SELECT id, name_key FROM cars WHERE user_id = ?")
+    .bind(userId)
+    .all<{ id: string; name_key: string }>();
+  const idByName = new Map(results.map((r) => [r.name_key, r.id]));
+  const knownIds = new Set(results.map((r) => r.id));
+
+  const out: IndexedOp[] = [];
+  for (const { op, index } of indexed) {
+    if (op.type === "all.del") {
+      idByName.clear();
+      knownIds.clear();
+    }
+    if (op.type === "car.del") {
+      knownIds.delete(op.id);
+      for (const [name, id] of idByName) if (id === op.id) idByName.delete(name);
+    }
+    if (op.type === "car.put") {
+      const key = nameKey(op.data.name);
+      const existing = idByName.get(key);
+      if (existing && existing !== op.data.id && !knownIds.has(op.data.id)) {
+        remapped.set(op.data.id, existing);
+        continue;
+      }
+      if (!existing) idByName.set(key, op.data.id);
+      knownIds.add(op.data.id);
+    }
+    out.push({ op: retargetOp(op, remapped), index });
+  }
+  return { ops: out, remapped };
+}
+
 const isConstraintError = (err: unknown): boolean => /constraint/i.test(String(err));
+const DB_DOWN = "База временно недоступна. Попробуй позже.";
 
 export const data = new Hono<AppEnv>();
 
 data.post("/ops", requireUser, async (c) => {
   const user = c.get("user");
   await limitApi(c, `ops:${user.id}`);
-  const { ops } = await readJson(c, opsRequestSchema, 2 * 1024 * 1024);
-  await checkQuota(c.env.DB, user.id, ops as Op[]);
+  const parsed = await readJson(c, opsRequestSchema, 2 * 1024 * 1024);
+  checkQuota(user, parsed.ops);
 
   const db = c.env.DB;
-  const statements = (ops as Op[]).map((op) => opStatements(db, user.id, op));
+  const { ops, remapped } = await mergeDuplicateCars(db, user.id, parsed.ops);
+  const respond = (rejected: number[]) =>
+    c.json({ rejected, remapped: Object.fromEntries(remapped) } satisfies OpsResponse);
+
+  const statements = ops.map(({ op }) => opStatements(db, user.id, op));
+  if (!statements.length) return respond([]);
   try {
     await db.batch(statements.flat());
-    return c.json({ rejected: [] as number[] });
+    return respond([]);
   } catch (err) {
     // Збій бази — не привід відкидати дані: клієнт повторить запит пізніше.
-    if (!isConstraintError(err)) throw new ApiError(503, "База временно недоступна. Попробуй позже.");
+    if (!isConstraintError(err)) throw new ApiError(503, DB_DOWN);
 
     // Одна операція (наприклад, запис для вже видаленої машини) не має блокувати решту черги.
     const rejected: number[] = [];
@@ -230,10 +286,10 @@ data.post("/ops", requireUser, async (c) => {
       try {
         await db.batch(statements[i]);
       } catch (inner) {
-        if (!isConstraintError(inner)) throw new ApiError(503, "База временно недоступна. Попробуй позже.");
-        rejected.push(i);
+        if (!isConstraintError(inner)) throw new ApiError(503, DB_DOWN);
+        rejected.push(ops[i].index);
       }
     }
-    return c.json({ rejected });
+    return respond(rejected);
   }
 });

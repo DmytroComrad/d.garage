@@ -1,17 +1,11 @@
-import { carSummary } from "../../shared/calc";
-import { fmtDate, fmtKm, todayISO } from "../../shared/format";
-import { sortReminders } from "../../shared/reminders";
-import { carRecords, dispatch, markReminderDone, openDialog, useApp } from "../lib/store";
+import { fmtDate, fmtKm } from "../../shared/format";
+import { dispatch, markReminderDone, openDialog, useCarView } from "../lib/store";
 import { LampIcon } from "./icons";
+import { EmptyState } from "./Ledger";
 import { Mono } from "./Mono";
 
 export function RemindersTab({ carId }: { carId: string }) {
-  const { data } = useApp();
-  const { service, fuel, reminders } = carRecords(data, carId);
-  const today = todayISO();
-  const odo = carSummary(service, fuel, today).currentOdo;
-  const active = sortReminders(reminders.filter((r) => !r.done), odo, today);
-  const done = reminders.filter((r) => r.done).sort((a, b) => (b.doneDate ?? "").localeCompare(a.doneDate ?? ""));
+  const { activeReminders: active, doneReminders: done } = useCarView(carId);
 
   return (
     <div className="narrow">
@@ -23,13 +17,10 @@ export function RemindersTab({ carId }: { carId: string }) {
       </div>
 
       {active.length === 0 ? (
-        <div className="empty">
-          <h2>Напоминаний пока нет</h2>
-          <p>
-            Поставь галочку «Напомнить через…» в любой записи или добавь напоминание здесь: замена масла, страховка,
-            техосмотр.
-          </p>
-        </div>
+        <EmptyState
+          title="Напоминаний пока нет"
+          text="Поставь галочку «Напомнить через…» в любой записи или добавь напоминание здесь: замена масла, страховка, техосмотр."
+        />
       ) : (
         <div className="sheet ledger">
           {active.map(({ reminder, status }) => {
@@ -45,7 +36,9 @@ export function RemindersTab({ carId }: { carId: string }) {
                 <button type="button" className="rem-main" onClick={() => openDialog({ type: "reminder", reminder })}>
                   <span className="rec-title">{reminder.title || "Обслуживание"}</span>
                   <span className="rem-when">{status.when}</span>
-                  <span className="rec-meta"><Mono text={due.join(", ")} /></span>
+                  <span className="rec-meta">
+                    <Mono text={due.join(", ")} />
+                  </span>
                 </button>
                 <button type="button" className="btn btn-small btn-quiet" onClick={() => markReminderDone(reminder)}>
                   Сделано
@@ -65,11 +58,7 @@ export function RemindersTab({ carId }: { carId: string }) {
                 <span>
                   {r.title || "Обслуживание"} <span className="muted">{fmtDate(r.doneDate)}</span>
                 </span>
-                <button
-                  type="button"
-                  className="link-btn"
-                  onClick={() => dispatch({ type: "reminder.del", id: r.id })}
-                >
+                <button type="button" className="link-btn" onClick={() => dispatch({ type: "reminder.del", id: r.id })}>
                   Удалить
                 </button>
               </li>

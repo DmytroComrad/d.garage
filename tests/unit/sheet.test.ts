@@ -1,20 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { mergeBackup } from "../../shared/backup";
-import { carSummary, fuelSummary } from "../../shared/calc";
+import { carSummary, fuelSummary, sumMoney } from "../../shared/calc";
 import { emptyData } from "../../shared/ops";
 import {
   SHEET_TITLES,
   buildSheets,
   dateToSerial,
   serialToDate,
-  sheetColumnTotal,
   sheetValues,
   sheetsToBackup,
 } from "../../shared/sheet";
+import type { Sheet } from "../../shared/sheet";
 import type { ServiceRecord } from "../../shared/types";
 import { CAR, fuel, partial, service } from "./fixtures";
 
 const today = "2026-09-15";
+/** Контрольна сума: те, що показує сайт, дорівнює сумі рядків таблиці. */
+const sheetColumnTotal = (sheet: Sheet, title: string): number => {
+  const i = sheet.columns.findIndex((c) => c.title === title);
+  return sumMoney(sheet.rows.map((r) => (typeof r[i] === "number" ? (r[i] as number) : 0)));
+};
 const allFuel = [...fuel, ...partial];
 const withItems: ServiceRecord = {
   ...service[2],

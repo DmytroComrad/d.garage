@@ -1,18 +1,16 @@
 import { z } from "zod";
 import { LIMITS } from "./constants";
+import { isIsoDate } from "./parse";
 
 const id = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
-const isoDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)));
+const isoDate = z.string().refine(isIsoDate);
 const money = z
   .number()
   .finite()
   .min(0)
-  .max(1e10)
+  .max(LIMITS.maxSum)
   .transform((v) => Math.round(v * 100) / 100);
-const odo = z.number().int().min(0).max(100_000_000);
+const odo = z.number().int().min(0).max(LIMITS.maxOdo);
 
 export const carSchema = z.object({ id, name: z.string().trim().min(1).max(LIMITS.carNameLength) });
 
@@ -28,7 +26,7 @@ export const serviceSchema = z.object({
   car: id,
   date: isoDate,
   odo: odo.nullable(),
-  cat: z.string().trim().min(1).max(80),
+  cat: z.string().trim().min(1).max(LIMITS.categoryLength),
   what: z.string().trim().min(1).max(LIMITS.whatLength),
   where: z.string().trim().max(LIMITS.placeLength),
   sum: money,
@@ -41,7 +39,7 @@ export const fuelSchema = z.object({
   car: id,
   date: isoDate,
   odo,
-  liters: z.number().finite().positive().max(100_000),
+  liters: z.number().finite().positive().max(LIMITS.maxLiters),
   sum: money.refine((v) => v > 0),
   station: z.string().trim().max(LIMITS.placeLength),
   full: z.boolean(),
@@ -52,7 +50,7 @@ export const reminderSchema = z
   .object({
     id,
     car: id,
-    title: z.string().trim().max(200),
+    title: z.string().trim().max(LIMITS.titleLength),
     dueOdo: odo.nullable(),
     dueDate: isoDate.nullable(),
     done: z.boolean(),
@@ -85,7 +83,7 @@ export const passwordSchema = z.string().min(8).max(200);
 export const registerSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
-  name: z.string().trim().max(80).default(""),
+  name: z.string().trim().max(LIMITS.personNameLength).default(""),
   turnstile: z.string().max(4096).nullish(),
 });
 
@@ -109,4 +107,4 @@ export const changePasswordSchema = z.object({
   next: passwordSchema,
 });
 
-export const profileSchema = z.object({ name: z.string().trim().max(80) });
+export const profileSchema = z.object({ name: z.string().trim().max(LIMITS.personNameLength) });

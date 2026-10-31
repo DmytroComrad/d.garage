@@ -1,17 +1,30 @@
 // Офлайн-оболонка застосунку. Дані API сюди не потрапляють: їх кешує сам застосунок для свого користувача.
 const CACHE = "garage-shell-v1";
+const STATIC = ["/theme.js"];
+
+/** Зберегти свіжу сторінку. Якщо вийшла нова збірка, докачати її файли й прибрати старі. */
+async function updateShell(res) {
+  const cache = await caches.open(CACHE);
+  const html = await res.clone().text();
+  const previous = await cache.match("/");
+  const unchanged = previous && (await previous.text()) === html;
+  await cache.put("/", res);
+  if (unchanged) return;
+
+  const current = new Set([...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((m) => m[1]));
+  await cache.addAll([...current, ...STATIC]).catch(() => undefined);
+  // Шрифти й ліниві частини в HTML не згадані: вони докачаються при першому ж використанні.
+  for (const request of await cache.keys()) {
+    const path = new URL(request.url).pathname;
+    if (path.startsWith("/assets/") && !current.has(path)) await cache.delete(request);
+  }
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(CACHE);
       const res = await fetch("/", { cache: "no-cache" });
-      if (res.ok) {
-        const html = await res.clone().text();
-        await cache.put("/", res);
-        const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((m) => m[1]);
-        await cache.addAll(assets).catch(() => undefined);
-      }
+      if (res.ok) await updateShell(res);
       await self.skipWaiting();
     })(),
   );
@@ -38,10 +51,7 @@ self.addEventListener("fetch", (event) => {
       (async () => {
         try {
           const res = await fetch(request);
-          if (res.ok && url.pathname === "/") {
-            const cache = await caches.open(CACHE);
-            await cache.put("/", res.clone());
-          }
+          if (res.ok && url.pathname === "/") event.waitUntil(updateShell(res.clone()));
           return res;
         } catch {
           const cached = await caches.match("/");
@@ -49,6 +59,11 @@ self.addEventListener("fetch", (event) => {
         }
       })(),
     );
+    return;
+  }
+
+  if (STATIC.includes(url.pathname)) {
+    event.respondWith(fetch(request).catch(async () => (await caches.match(request)) ?? Response.error()));
     return;
   }
 

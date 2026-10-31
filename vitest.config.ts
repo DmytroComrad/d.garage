@@ -16,6 +16,10 @@ export default defineConfig({
                 TEST_MIGRATIONS: await readD1Migrations("./migrations"),
                 PASSWORD_PEPPER: "test-pepper-not-a-secret",
                 TOKEN_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                // Локальний .dev.vars не повинен змінювати поведінку тестів.
+                GOOGLE_CLIENT_ID: "",
+                GOOGLE_CLIENT_SECRET: "",
+                TURNSTILE_SECRET: "",
               },
             },
           })),

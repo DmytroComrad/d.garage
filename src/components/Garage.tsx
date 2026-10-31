@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { carSummary, fuelSummary } from "../../shared/calc";
-import { fmtConsumption, fmtDate, fmtKm, fmtMoney, fmtMoney0, todayISO } from "../../shared/format";
-import { reminderText, sortReminders } from "../../shared/reminders";
-import { carRecords, dispatch, loadDemo, markReminderDone, openDialog, setActive, setTab, toast, useApp, type Tab } from "../lib/store";
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { fmtConsumption, fmtDate, fmtKm, fmtMoney, fmtMoney0 } from "../../shared/format";
+import { reminderText } from "../../shared/reminders";
+import { dispatch, loadDemo, markReminderDone, openDialog, setActive, setTab, toast, useCarView, useStore, type Tab } from "../lib/store";
 import { DataTab } from "./DataTab";
 import { FuelTab } from "./FuelTab";
 import { GalleryTab } from "./GalleryTab";
@@ -14,7 +13,9 @@ import { ServiceTab } from "./ServiceTab";
 import { StatsTab } from "./StatsTab";
 
 function TopBar() {
-  const { data, active, user } = useApp();
+  const cars = useStore((s) => s.data.cars);
+  const active = useStore((s) => s.active);
+  const user = useStore((s) => s.user);
   return (
     <header className="topbar">
       <div className="topbar-inner">
@@ -22,7 +23,7 @@ function TopBar() {
           <span>Гараж</span> <span className="brand-accent">Амедро</span>
         </div>
         <nav className="car-chips" aria-label="Машины">
-          {data.cars.map((c) => (
+          {cars.map((c) => (
             <button
               key={c.id}
               type="button"
@@ -51,10 +52,13 @@ function TopBar() {
 }
 
 function Banners() {
-  const { data, offline, queue, storageOk } = useApp();
+  const demo = useStore((s) => s.data.demo);
+  const offline = useStore((s) => s.offline);
+  const pending = useStore((s) => s.queue.length);
+  const storageOk = useStore((s) => s.storageOk);
   return (
     <>
-      {data.demo && (
+      {demo && (
         <div className="banner">
           <p>
             <strong>Это пример гаража.</strong> Если хочешь, оставь эти записи. Если нет, начни с чистого гаража.
@@ -87,8 +91,8 @@ function Banners() {
         <div className="banner banner-quiet" role="status">
           <p>
             <strong>Нет связи с сервером.</strong>{" "}
-            {queue.length
-              ? `Несохранённых изменений: ${queue.length}. Отправятся сами, когда появится интернет.`
+            {pending
+              ? `Несохранённых изменений: ${pending}. Отправятся сами, когда появится интернет.`
               : "Показаны последние сохранённые данные."}
           </p>
         </div>
@@ -126,15 +130,7 @@ function EmptyGarage() {
 }
 
 function ReminderStrip({ carId }: { carId: string }) {
-  const { data } = useApp();
-  const { service, fuel, reminders } = carRecords(data, carId);
-  const today = todayISO();
-  const odo = carSummary(service, fuel, today).currentOdo;
-  const rows = sortReminders(
-    reminders.filter((r) => !r.done),
-    odo,
-    today,
-  ).filter((r) => r.status.level > 0);
+  const { urgentReminders: rows } = useCarView(carId);
   if (!rows.length) return null;
   const shown = rows.slice(0, 3);
   return (
@@ -161,18 +157,15 @@ function ReminderStrip({ carId }: { carId: string }) {
   );
 }
 
-function Hero({ carId, actionsRef }: { carId: string; actionsRef: React.RefObject<HTMLDivElement | null> }) {
-  const { data } = useApp();
-  const car = data.cars.find((c) => c.id === carId);
-  const { service, fuel } = carRecords(data, carId);
-  const s = carSummary(service, fuel, todayISO());
-  const f = fuelSummary(fuel);
+function Hero({ carId, actionsRef }: { carId: string; actionsRef: RefObject<HTMLDivElement | null> }) {
+  const name = useStore((s) => s.data.cars.find((c) => c.id === carId)?.name);
+  const { summary: s, fuelTotals: f } = useCarView(carId);
 
   return (
     <section className="hero">
       <div className="hero-top">
         <div className="hero-title">
-          <h1 className="display">{car?.name}</h1>
+          <h1 className="display">{name}</h1>
           <p className="hero-sub">
             <Mono text={s.hasRecords ? `Учёт с ${fmtDate(s.since)} · проехано ${fmtKm(s.driven)}` : "Пока нет записей"} />
           </p>
@@ -214,20 +207,13 @@ function Hero({ carId, actionsRef }: { carId: string; actionsRef: React.RefObjec
 }
 
 function Tabs({ carId }: { carId: string }) {
-  const { tab, data } = useApp();
-  const { service, fuel, reminders } = carRecords(data, carId);
-  const today = todayISO();
-  const odo = carSummary(service, fuel, today).currentOdo;
-  const urgent = sortReminders(
-    reminders.filter((r) => !r.done),
-    odo,
-    today,
-  ).filter((r) => r.status.level > 0).length;
+  const tab = useStore((s) => s.tab);
+  const { urgentReminders } = useCarView(carId);
 
   const items: { id: Tab; label: string; badge?: number }[] = [
     { id: "service", label: "Обслуживание" },
     { id: "fuel", label: "Заправки" },
-    { id: "reminders", label: "Напоминания", badge: urgent },
+    { id: "reminders", label: "Напоминания", badge: urgentReminders.length },
     { id: "gallery", label: "Галерея" },
     { id: "stats", label: "Статистика" },
     { id: "data", label: "Данные" },
@@ -238,7 +224,7 @@ function Tabs({ carId }: { carId: string }) {
     document.getElementById(`tab-${tab}`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [tab]);
 
-  const onKey = (e: React.KeyboardEvent) => {
+  const onKey = (e: KeyboardEvent) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
     const i = items.findIndex((x) => x.id === tab);
     const next = items[(i + (e.key === "ArrowRight" ? 1 : items.length - 1)) % items.length];
@@ -271,7 +257,7 @@ function Tabs({ carId }: { carId: string }) {
 }
 
 /** На телефоні кнопки додавання завжди під рукою, навіть коли hero вже за межами екрана. */
-function QuickBar({ carId, actionsRef }: { carId: string; actionsRef: React.RefObject<HTMLDivElement | null> }) {
+function QuickBar({ carId, actionsRef }: { carId: string; actionsRef: RefObject<HTMLDivElement | null> }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const node = actionsRef.current;
@@ -304,9 +290,9 @@ function QuickBar({ carId, actionsRef }: { carId: string; actionsRef: React.RefO
 }
 
 export function Garage() {
-  const { data, active, tab } = useApp();
+  const tab = useStore((s) => s.tab);
+  const carId = useStore((s) => (s.active && s.data.cars.some((c) => c.id === s.active) ? s.active : null));
   const actionsRef = useRef<HTMLDivElement>(null);
-  const carId = active && data.cars.some((c) => c.id === active) ? active : null;
 
   return (
     <>

@@ -1,8 +1,8 @@
 import { LIMITS } from "../../shared/constants";
 import { genId } from "../../shared/format";
-import type { Photo, PhotoKind } from "../../shared/types";
-import { HttpError, NetworkError, postForm } from "./api";
-import { addPhoto, flush, setDrive, getState, setUploading, toast } from "./store";
+import type { Photo, PhotoKind, PhotoResponse } from "../../shared/types";
+import { HttpError, errorText, postForm } from "./api";
+import { addPhoto, flush, getState, resolveCarId, setDrive, setUploading, toast } from "./store";
 
 const MAX_SIDE = 2400;
 const QUALITY = 0.85;
@@ -55,20 +55,20 @@ export async function uploadPhotos(files: File[], target: UploadTarget): Promise
       const prepared = await prepareImage(file);
       const form = new FormData();
       form.set("id", genId());
-      form.set("car", target.car);
+      form.set("car", resolveCarId(target.car));
       form.set("kind", target.kind);
       if (target.recordId) form.set("recordId", target.recordId);
       if (prepared.width) form.set("width", String(prepared.width));
       if (prepared.height) form.set("height", String(prepared.height));
       form.set("file", prepared.blob, prepared.name);
-      const { photo } = await postForm<{ photo: Photo }>("/api/photos", form);
+      const { photo } = await postForm<PhotoResponse>("/api/photos", form);
       addPhoto(photo);
       done++;
     } catch (err) {
       if (err instanceof HttpError && err.code === "drive_disconnected") {
         setDrive({ ...getState().drive, connected: false });
       }
-      toast(err instanceof HttpError || err instanceof NetworkError ? err.message : "Не получилось загрузить фото.");
+      toast(errorText(err));
     } finally {
       setUploading(-1);
     }

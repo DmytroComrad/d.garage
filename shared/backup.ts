@@ -1,5 +1,6 @@
 import { BACKUP_APP, LIMITS } from "./constants";
 import { genId, nameKey } from "./format";
+import { isIsoDate } from "./parse";
 import type { Backup, Car, FuelRecord, GarageData, Reminder, ServiceItem, ServiceRecord } from "./types";
 
 type BackupSource = Pick<GarageData, "cars" | "service" | "fuel" | "reminders">;
@@ -61,14 +62,27 @@ export function parseBackupText(text: string): ParsedBackup {
   return { ok: true, backup: obj as unknown as RawBackup };
 }
 
-const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+const str = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const num = (v: unknown): number | null => {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Number(v);
   return null;
 };
-const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const kopecks = (v: number): number => Math.round(v * 100);
+
+/** Сума в межах, які приймає сервер. */
+const money = (v: unknown): number | null => {
+  const n = num(v);
+  return n != null && n >= 0 && n <= LIMITS.maxSum ? n : null;
+};
+
+/** Пробіг у межах сервера: порожньо → null, сміття → undefined. */
+const odometer = (v: unknown): number | null | undefined => {
+  if (v == null || v === "") return null;
+  const n = num(v);
+  if (n == null || n < 0 || n > LIMITS.maxOdo) return undefined;
+  return Math.round(n);
+};
 
 const dupKey = (type: string, date: string, carName: string, odo: number | null, sum: number): string =>
   [type, date, nameKey(carName), odo ?? "", kopecks(sum)].join("|");
@@ -89,6 +103,7 @@ export type MergeResult = {
  * Відновлення зливає дані, а не замінює (п. 3.9):
  * машини зіставляються за назвою без регістру, записи отримують нові id,
  * дублікат = збіг типу, дати, назви машини, пробігу і суми в копійках.
+ * Межі ті самі, що на сервері: те, що він відхилить, не рахується доданим.
  */
 export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: () => string = genId): MergeResult {
   const carsByKey = new Map(current.cars.map((c) => [nameKey(c.name), c]));
@@ -99,8 +114,8 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
   const backupCars = new Map<string, Car>();
   for (const raw of backup.cars) {
     const r = raw as Record<string, unknown>;
-    const name = str(r?.name).slice(0, LIMITS.carNameLength);
-    const backupId = str(r?.id);
+    const name = str(r?.name, LIMITS.carNameLength);
+    const backupId = str(r?.id, 200);
     if (!name) continue;
     let car = carsByKey.get(nameKey(name));
     if (!car) {
@@ -127,15 +142,14 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
 
   for (const raw of backup.service ?? []) {
     const r = raw as Record<string, unknown>;
-    const car = backupCars.get(str(r?.car));
-    const sum = num(r?.sum);
-    const what = str(r?.what) || str(r?.cat);
-    if (!car || !isDate(r?.date) || sum == null || sum < 0 || !what) {
+    const car = backupCars.get(str(r?.car, 200));
+    const sum = money(r?.sum);
+    const what = str(r?.what, LIMITS.whatLength) || str(r?.cat, LIMITS.whatLength);
+    const odo = odometer(r?.odo);
+    if (!car || !isIsoDate(r?.date) || sum == null || !what || odo === undefined) {
       skipped++;
       continue;
     }
-    const odoRaw = r.odo == null || r.odo === "" ? null : num(r.odo);
-    const odo = odoRaw == null ? null : Math.round(odoRaw);
     const key = dupKey("s", r.date, car.name, odo, sum);
     if (seen.has(key)) {
       skipped++;
@@ -143,13 +157,13 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
     }
     seen.add(key);
     const id = makeId();
-    if (str(r.id)) recordIdMap.set(str(r.id), id);
+    if (str(r.id, 200)) recordIdMap.set(str(r.id, 200), id);
     const items: ServiceItem[] = Array.isArray(r.items)
       ? (r.items as Record<string, unknown>[]).slice(0, LIMITS.itemsPerRecord).flatMap((it) => {
-          const itemSum = num(it?.sum);
-          if (itemSum == null || itemSum < 0) return [];
-          const kind = it.kind === "parts" || it.kind === "labor" ? it.kind : "extra";
-          return [{ id: makeId(), kind, name: str(it.name).slice(0, LIMITS.itemNameLength), sum: itemSum } as ServiceItem];
+          const itemSum = money(it?.sum);
+          if (itemSum == null) return [];
+          const kind: ServiceItem["kind"] = it.kind === "parts" || it.kind === "labor" ? it.kind : "extra";
+          return [{ id: makeId(), kind, name: str(it.name, LIMITS.itemNameLength), sum: itemSum }];
         })
       : [];
     service.push({
@@ -157,11 +171,11 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
       car: car.id,
       date: r.date,
       odo,
-      cat: (str(r.cat) || "Другое").slice(0, 80),
-      what: what.slice(0, LIMITS.whatLength),
-      where: str(r.where).slice(0, LIMITS.placeLength),
+      cat: str(r.cat, LIMITS.categoryLength) || "Другое",
+      what,
+      where: str(r.where, LIMITS.placeLength),
       sum,
-      note: str(r.note).slice(0, LIMITS.noteLength),
+      note: str(r.note, LIMITS.noteLength),
       items,
     });
     added++;
@@ -169,15 +183,22 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
 
   for (const raw of backup.fuel ?? []) {
     const r = raw as Record<string, unknown>;
-    const car = backupCars.get(str(r?.car));
-    const sum = num(r?.sum);
+    const car = backupCars.get(str(r?.car, 200));
+    const sum = money(r?.sum);
     const liters = num(r?.liters);
-    const odoRaw = num(r?.odo);
-    if (!car || !isDate(r?.date) || sum == null || sum <= 0 || liters == null || liters <= 0 || odoRaw == null) {
+    const odo = odometer(r?.odo);
+    if (
+      !car ||
+      !isIsoDate(r?.date) ||
+      !sum ||
+      liters == null ||
+      liters <= 0 ||
+      liters > LIMITS.maxLiters ||
+      odo == null
+    ) {
       skipped++;
       continue;
     }
-    const odo = Math.round(odoRaw);
     const key = dupKey("f", r.date, car.name, odo, sum);
     if (seen.has(key)) {
       skipped++;
@@ -185,7 +206,7 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
     }
     seen.add(key);
     const id = makeId();
-    if (str(r.id)) recordIdMap.set(str(r.id), id);
+    if (str(r.id, 200)) recordIdMap.set(str(r.id, 200), id);
     fuel.push({
       id,
       car: car.id,
@@ -193,24 +214,23 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
       odo,
       liters,
       sum,
-      station: str(r.station).slice(0, LIMITS.placeLength),
+      station: str(r.station, LIMITS.placeLength),
       full: r.full !== false,
-      note: str(r.note).slice(0, LIMITS.noteLength),
+      note: str(r.note, LIMITS.noteLength),
     });
     added++;
   }
 
   for (const raw of backup.reminders ?? []) {
     const r = raw as Record<string, unknown>;
-    const car = backupCars.get(str(r?.car));
-    const dueOdoRaw = r?.dueOdo == null ? null : num(r.dueOdo);
-    const dueOdo = dueOdoRaw == null ? null : Math.round(dueOdoRaw);
-    const dueDate = isDate(r?.dueDate) ? r.dueDate : null;
-    if (!car || (dueOdo == null && dueDate == null)) {
+    const car = backupCars.get(str(r?.car, 200));
+    const dueOdo = odometer(r?.dueOdo);
+    const dueDate = isIsoDate(r?.dueDate) ? r.dueDate : null;
+    if (!car || dueOdo === undefined || (dueOdo == null && dueDate == null)) {
       skipped++;
       continue;
     }
-    const title = str(r.title).slice(0, 200);
+    const title = str(r.title, LIMITS.titleLength);
     const key = reminderKey(car.name, title, dueOdo, dueDate);
     if (seenReminders.has(key)) {
       skipped++;
@@ -224,9 +244,9 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
       dueOdo,
       dueDate,
       done: r.done === true,
-      doneDate: isDate(r.doneDate) ? r.doneDate : null,
+      doneDate: isIsoDate(r.doneDate) ? r.doneDate : null,
       notified: 0,
-      recordId: recordIdMap.get(str(r.recordId)) ?? null,
+      recordId: recordIdMap.get(str(r.recordId, 200)) ?? null,
     });
     added++;
   }

@@ -89,6 +89,3 @@ export const decryptToken = async (stored: string, secret: string, userId: strin
   );
   return decoder.decode(plain);
 };
-
-export const pkceChallenge = async (verifier: string): Promise<string> =>
-  toB64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(verifier))));

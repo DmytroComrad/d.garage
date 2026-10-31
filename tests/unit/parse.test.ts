@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDecimal, parseMoney, parseOdo } from "../../shared/parse";
+import { isIsoDate, parseDecimal, parseMoney, parseOdo } from "../../shared/parse";
 
 describe("пробіг", () => {
   it("прибирає пробіли, крапки, коми й одиниці", () => {
@@ -8,9 +8,10 @@ describe("пробіг", () => {
     expect(parseOdo("328.030")).toBe(328030);
     expect(parseOdo("328,030")).toBe(328030);
   });
-  it("порожньо → null, сміття → NaN", () => {
+  it("порожньо → null, сміття й завеликий пробіг → invalid", () => {
     expect(parseOdo("")).toBeNull();
-    expect(parseOdo("abc")).toBeNaN();
+    expect(parseOdo("abc")).toBe("invalid");
+    expect(parseOdo("999999999999")).toBe("invalid");
   });
 });
 
@@ -40,8 +41,19 @@ describe("дробові числа", () => {
     expect(parseMoney("4 305 грн")).toBe(4305);
     expect(parseDecimal("30 л")).toBe(30);
   });
-  it("порожньо → null, сміття → NaN", () => {
+  it("порожньо → null, сміття → invalid", () => {
     expect(parseMoney("")).toBeNull();
-    expect(parseMoney("много")).toBeNaN();
+    expect(parseMoney("много")).toBe("invalid");
+  });
+});
+
+describe("дати", () => {
+  it("приймає лише справжні календарні дати", () => {
+    expect(isIsoDate("2026-08-17")).toBe(true);
+    expect(isIsoDate("2024-02-29")).toBe(true);
+    expect(isIsoDate("2026-02-31")).toBe(false);
+    expect(isIsoDate("2026-13-45")).toBe(false);
+    expect(isIsoDate("17.08.2026")).toBe(false);
+    expect(isIsoDate(20260817)).toBe(false);
   });
 });

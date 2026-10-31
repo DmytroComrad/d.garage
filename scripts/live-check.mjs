@@ -70,6 +70,16 @@ const addFuel = async (page, f) => {
   await d.getByRole("button", { name: "Сохранить" }).click();
 };
 
+const insecure = await fetch(BASE.replace("https:", "http:") + "/privacy?x=1", { redirect: "manual" });
+check("сторінка по http переходить на https", insecure.status === 301 && insecure.headers.get("location") === `${BASE}/privacy?x=1`);
+const insecurePost = await fetch(BASE.replace("https:", "http:") + "/api/auth/login", {
+  method: "POST",
+  redirect: "manual",
+  headers: { origin: BASE.replace("https:", "http:"), "content-type": "application/json" },
+  body: "{}",
+});
+check("запит зі змінами по http відхиляється", insecurePost.status === 403);
+
 try {
   const desktop = await openPage({ viewport: { width: 1280, height: 860 } }, desktopSession);
   const { page } = desktop;
@@ -113,6 +123,14 @@ try {
   await page.screenshot({ path: `${OUT}/live-desktop-notify.png` });
   await alert.getByRole("button", { name: "Понятно" }).click();
   await page.waitForLoadState("networkidle");
+
+  const notModified = await page.evaluate(async () => {
+    const first = await fetch("/api/state");
+    const etag = first.headers.get("etag");
+    const second = await fetch("/api/state", { headers: { "If-None-Match": etag ?? "" } });
+    return { etag: Boolean(etag), status: second.status };
+  });
+  check("незмінні дані відповідають 304", notModified.etag && notModified.status === 304);
 
   // Дані мають бути на сервері, а не лише на пристрої.
   await page.evaluate(() => localStorage.clear());

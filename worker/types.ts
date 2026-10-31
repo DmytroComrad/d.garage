@@ -1,4 +1,4 @@
-/** Секрети задаються через `wrangler secret put`, а локально — через .dev.vars. */
+/** Секрети задаються через `wrangler secret put`, а локально — через .dev.vars. Будь-якого з них може не бути. */
 export type Secrets = {
   PASSWORD_PEPPER?: string;
   TOKEN_KEY?: string;
@@ -17,11 +17,10 @@ export type EmailBinding = {
   }): Promise<unknown>;
 };
 
-export type Bindings = Env &
+export type Bindings = Omit<Env, keyof Secrets> &
   Secrets & {
     EMAIL?: EmailBinding;
     EMAIL_FROM?: string;
-    TURNSTILE_SITE_KEY?: string;
   };
 
 export type SessionUser = {
@@ -31,6 +30,12 @@ export type SessionUser = {
   password_hash: string | null;
   google_sub: string | null;
   demo: number;
+  rev: number;
+  cars_count: number;
+  service_count: number;
+  fuel_count: number;
+  reminders_count: number;
+  photos_count: number;
 };
 
 export type AppEnv = {

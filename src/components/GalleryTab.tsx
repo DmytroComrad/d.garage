@@ -1,40 +1,43 @@
 import { useRef, useState } from "react";
 import { photoUrl, uploadPhotos } from "../lib/photos";
-import { carRecords, openDialog, setTab, useApp } from "../lib/store";
+import { openDialog, setTab, useCarView, useStore } from "../lib/store";
 import { CameraIcon } from "./icons";
+import { EmptyState } from "./Ledger";
 
 export function GalleryTab({ carId }: { carId: string }) {
-  const { data, drive, config, uploading } = useApp();
+  const connected = useStore((s) => s.drive.connected);
+  const driveEnabled = useStore((s) => s.config.drive);
+  const uploading = useStore((s) => s.uploading);
+  const { photos } = useCarView(carId);
   const input = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"gallery" | "record">("gallery");
-  const { photos } = carRecords(data, carId);
   const list = photos.filter((p) => p.kind === view).sort((a, b) => b.createdAt - a.createdAt);
   const shots = photos.filter((p) => p.kind === "record").length;
 
-  if (!config.drive) {
+  if (!driveEnabled) {
     return (
-      <div className="empty narrow">
-        <h2>Галерея пока недоступна</h2>
-        <p>Фото будут храниться на твоём Google Диске. Подключение появится здесь, как только его настроят на сайте.</p>
-      </div>
+      <EmptyState
+        narrow
+        title="Галерея пока недоступна"
+        text="Фото будут храниться на твоём Google Диске. Подключение появится здесь, как только его настроят на сайте."
+      />
     );
   }
 
-  if (!drive.connected) {
+  if (!connected) {
     return (
-      <div className="empty narrow">
-        <h2>Подключи Google Диск</h2>
-        <p>
-          Фото машины и скриншоты чеков будут лежать в отдельной папке на твоём Диске. Сайт получает доступ только к
-          тем файлам, которые загрузил сам: остальное на Диске он не видит.
-        </p>
+      <EmptyState
+        narrow
+        title="Подключи Google Диск"
+        text="Фото машины и скриншоты чеков будут лежать в отдельной папке на твоём Диске. Сайт получает доступ только к тем файлам, которые загрузил сам: остальное на Диске он не видит."
+      >
         <a className="btn btn-ink" href="/api/google/drive/connect">
           Подключить Google Диск
         </a>
         <button type="button" className="link-btn" onClick={() => setTab("data")}>
           Подробнее на вкладке «Данные»
         </button>
-      </div>
+      </EmptyState>
     );
   }
 
@@ -81,14 +84,14 @@ export function GalleryTab({ carId }: { carId: string }) {
       </div>
 
       {list.length === 0 ? (
-        <div className="empty">
-          <h2>{view === "gallery" ? "Фото пока нет" : "В записях пока нет фото"}</h2>
-          <p>
-            {view === "gallery"
+        <EmptyState
+          title={view === "gallery" ? "Фото пока нет" : "В записях пока нет фото"}
+          text={
+            view === "gallery"
               ? "Добавь первое фото машины: оно сохранится в папку «Галерея» на твоём Google Диске."
-              : "Прикрепляй чеки и заказ-наряды прямо в форме записи: они попадут в папку «Скриншоты»."}
-          </p>
-        </div>
+              : "Прикрепляй чеки и заказ-наряды прямо в форме записи: они попадут в папку «Скриншоты»."
+          }
+        />
       ) : (
         <div className="photo-wall">
           {list.map((p, i) => (

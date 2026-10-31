@@ -20,6 +20,7 @@ export const ITEM_KINDS: { value: ItemKind; label: string; placeholder: string }
 export const itemKindLabel = (kind: ItemKind): string =>
   ITEM_KINDS.find((k) => k.value === kind)?.label ?? "Другое";
 
+/** Єдине джерело меж: їх використовують схеми сервера, імпорт і форми. */
 export const LIMITS = {
   cars: 50,
   service: 10000,
@@ -32,6 +33,12 @@ export const LIMITS = {
   placeLength: 200,
   itemNameLength: 120,
   carNameLength: 80,
+  personNameLength: 80,
+  titleLength: 200,
+  categoryLength: 80,
+  maxOdo: 100_000_000,
+  maxLiters: 100_000,
+  maxSum: 10_000_000_000,
   // Безкоштовний план Workers дає 50 звернень до бази на запит: стільки вистачить і на запасний шлях по одній.
   opsPerRequest: 40,
   uploadBytes: 25 * 1024 * 1024,

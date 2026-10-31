@@ -1,21 +1,20 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { CloseIcon } from "./icons";
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** Чи ставити фокус у перше поле: на телефоні це відкрило б клавіатуру поверх форми. */
-export const isDesktop = (): boolean => window.matchMedia("(min-width: 640px) and (hover: hover)").matches;
+const isDesktop = (): boolean => window.matchMedia("(min-width: 640px) and (hover: hover)").matches;
 
 type Props = {
   title: string;
   onClose: () => void;
   children: ReactNode;
-  footer?: ReactNode;
   alert?: boolean;
-  wide?: boolean;
 };
 
-export function Modal({ title, onClose, children, footer, alert, wide }: Props) {
+export function Modal({ title, onClose, children, alert }: Props) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -66,7 +65,7 @@ export function Modal({ title, onClose, children, footer, alert, wide }: Props) 
       <div className="modal-backdrop" onClick={onClose} />
       <div
         ref={panel}
-        className={`modal${wide ? " modal-wide" : ""}`}
+        className="modal"
         role={alert ? "alertdialog" : "dialog"}
         aria-modal="true"
         aria-labelledby={titleId}
@@ -81,7 +80,6 @@ export function Modal({ title, onClose, children, footer, alert, wide }: Props) 
           </button>
         </header>
         <div className="modal-body">{children}</div>
-        {footer && <footer className="modal-foot">{footer}</footer>}
       </div>
     </div>
   );

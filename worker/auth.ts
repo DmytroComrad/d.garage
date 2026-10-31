@@ -9,9 +9,10 @@ import {
 } from "../shared/schema";
 import { z } from "zod";
 import { burnPasswordCheck, hashPassword, randomToken, sha256, verifyPassword } from "./crypto";
-import { revokeGoogle } from "./google";
+import { revokeGoogle } from "./google/connection";
 import { clientIp, limitAuth, readJson, verifyTurnstile } from "./guard";
 import { clearSessionCookie, createSession, requireUser } from "./session";
+import type { AuthResponse } from "../shared/types";
 import { ApiError, type AppEnv, type SessionUser } from "./types";
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -53,7 +54,9 @@ auth.post("/register", async (c) => {
     .run();
 
   await createSession(c, id);
-  return c.json({ user: publicUser({ id, email: body.email, name: body.name, password_hash: hash, google_sub: null }) });
+  return c.json({
+    user: publicUser({ id, email: body.email, name: body.name, password_hash: hash, google_sub: null }),
+  } satisfies AuthResponse);
 });
 
 auth.post("/login", async (c) => {
@@ -87,7 +90,7 @@ auth.post("/login", async (c) => {
     await c.env.DB.prepare("UPDATE users SET failed_logins = 0, locked_until = 0 WHERE id = ?").bind(user.id).run();
   }
   await createSession(c, user.id);
-  return c.json({ user: publicUser(user) });
+  return c.json({ user: publicUser(user) } satisfies AuthResponse);
 });
 
 auth.post("/logout", requireUser, async (c) => {
@@ -148,11 +151,14 @@ auth.post("/reset", async (c) => {
   if (!row || row.expires_at < now()) throw new ApiError(400, "Ссылка устарела. Запроси новую.");
 
   const hash = await hashPassword(body.password, pepper(c));
+  await revokeGoogle(c.env, row.user_id).catch(() => undefined);
+  // Скидання — це доказ, що пошта своя. Усе, що прив'язали до акаунта раніше, міг зробити хтось інший,
+  // хто заздалегідь зареєстрував цю адресу. Тому прив'язку Google і Диск прибираємо разом із сесіями.
   await c.env.DB.batch([
-    c.env.DB.prepare("UPDATE users SET password_hash = ?, failed_logins = 0, locked_until = 0 WHERE id = ?").bind(
-      hash,
-      row.user_id,
-    ),
+    c.env.DB.prepare(
+      "UPDATE users SET password_hash = ?, google_sub = NULL, failed_logins = 0, locked_until = 0 WHERE id = ?",
+    ).bind(hash, row.user_id),
+    c.env.DB.prepare("DELETE FROM google_connections WHERE user_id = ?").bind(row.user_id),
     c.env.DB.prepare("DELETE FROM password_resets WHERE user_id = ?").bind(row.user_id),
     c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(row.user_id),
   ]);
