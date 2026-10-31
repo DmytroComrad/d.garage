@@ -64,7 +64,7 @@ This builds the app, applies database migrations and deploys. If a migration fai
 
 ## Security
 
-Found a vulnerability? Please [open an issue](https://github.com/DmytroComrad/d.garage/issues).
+Found a vulnerability? Please [report it privately](https://github.com/DmytroComrad/d.garage/security/advisories/new) instead of opening a public issue, so it can be fixed before the details become public.
 
 - The site runs on HTTPS only: the Worker redirects pages and rejects state-changing requests made over HTTP.
 - Passwords: PBKDF2 with a salt and a secret pepper.
