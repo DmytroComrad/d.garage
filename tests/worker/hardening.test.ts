@@ -173,6 +173,13 @@ describe("лічильники й версія даних", () => {
     expect((await client.call("/api/state", { headers: { "if-none-match": etag } })).status).toBe(200);
   });
 
+  it("слабкий ETag від Cloudflare теж дає 304", async () => {
+    const { client } = await register();
+    const etag = (await client.call("/api/state")).headers.get("etag") ?? "";
+    const res = await client.call("/api/state", { headers: { "if-none-match": `W/${etag}` } });
+    expect(res.status).toBe(304);
+  });
+
   it("ETag одного користувача не підходить іншому", async () => {
     const a = await register();
     const b = await register();

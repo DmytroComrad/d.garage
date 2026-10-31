@@ -42,7 +42,8 @@ app.get("/state", requireUser, async (c) => {
   // Дані не змінились, тож не читаємо всі рядки користувача заново. rev оновлюють тригери бази.
   const etag = `"${user.id}:${user.rev}"`;
   c.header("ETag", etag);
-  if (c.req.header("if-none-match") === etag) return c.body(null, 304);
+  // Cloudflare при стисканні робить ETag слабким: браузер повертає його з префіксом W/.
+  if (c.req.header("if-none-match")?.replace(/^W\//, "") === etag) return c.body(null, 304);
 
   const [garage, drive] = await Promise.all([
     loadGarage(c.env.DB, user.id, user.demo),
