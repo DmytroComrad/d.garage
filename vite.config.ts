@@ -4,5 +4,6 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react(), cloudflare({ configPath: process.env.WRANGLER_CONFIG })],
-  build: { sourcemap: false, target: "es2022" },
+  // Без вбудовування файлів у CSS: шрифти в data: блокує наша політика безпеки (font-src 'self').
+  build: { sourcemap: false, target: "es2022", assetsInlineLimit: 0 },
 });

@@ -200,7 +200,7 @@ const decodeIdToken = (idToken: string): Record<string, unknown> => {
 async function finishLogin(c: Context<AppEnv>, claims: Record<string, unknown>): Promise<Response> {
   const sub = String(claims.sub ?? "");
   const email = typeof claims.email === "string" ? claims.email.trim().toLowerCase() : "";
-  const verified = claims.email_verified === true;
+  const verified = claims.email_verified === true || claims.email_verified === "true";
   const name = typeof claims.name === "string" ? claims.name.slice(0, 80) : "";
   if (!sub || !email || !verified) return c.redirect("/?google=unverified");
 
@@ -425,7 +425,7 @@ google.post("/sheet/export", requireUser, async (c) => {
     const created = await sheetsFetch(token, "?fields=spreadsheetId,sheets.properties", {
       method: "POST",
       body: JSON.stringify({
-        properties: { title: "Гараж Амедро: бэкап", locale: "ru_RU", timeZone: "Europe/Kyiv" },
+        properties: { title: "Гараж Амедро: бэкап", locale: "ru_RU" },
         sheets: sheets.map((s) => ({
           properties: { title: s.title, gridProperties: { frozenRowCount: 1 } },
         })),
