@@ -1,4 +1,4 @@
-import { BACKUP_APP } from "./constants";
+import { BACKUP_APP, LIMITS } from "./constants";
 import { genId, nameKey } from "./format";
 import type { Backup, Car, FuelRecord, GarageData, Reminder, ServiceItem, ServiceRecord } from "./types";
 
@@ -99,7 +99,7 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
   const backupCars = new Map<string, Car>();
   for (const raw of backup.cars) {
     const r = raw as Record<string, unknown>;
-    const name = str(r?.name);
+    const name = str(r?.name).slice(0, LIMITS.carNameLength);
     const backupId = str(r?.id);
     if (!name) continue;
     let car = carsByKey.get(nameKey(name));
@@ -145,11 +145,11 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
     const id = makeId();
     if (str(r.id)) recordIdMap.set(str(r.id), id);
     const items: ServiceItem[] = Array.isArray(r.items)
-      ? (r.items as Record<string, unknown>[]).flatMap((it) => {
+      ? (r.items as Record<string, unknown>[]).slice(0, LIMITS.itemsPerRecord).flatMap((it) => {
           const itemSum = num(it?.sum);
           if (itemSum == null || itemSum < 0) return [];
           const kind = it.kind === "parts" || it.kind === "labor" ? it.kind : "extra";
-          return [{ id: makeId(), kind, name: str(it.name), sum: itemSum } as ServiceItem];
+          return [{ id: makeId(), kind, name: str(it.name).slice(0, LIMITS.itemNameLength), sum: itemSum } as ServiceItem];
         })
       : [];
     service.push({
@@ -157,11 +157,11 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
       car: car.id,
       date: r.date,
       odo,
-      cat: str(r.cat) || "Другое",
-      what,
-      where: str(r.where),
+      cat: (str(r.cat) || "Другое").slice(0, 80),
+      what: what.slice(0, LIMITS.whatLength),
+      where: str(r.where).slice(0, LIMITS.placeLength),
       sum,
-      note: str(r.note),
+      note: str(r.note).slice(0, LIMITS.noteLength),
       items,
     });
     added++;
@@ -193,9 +193,9 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
       odo,
       liters,
       sum,
-      station: str(r.station),
+      station: str(r.station).slice(0, LIMITS.placeLength),
       full: r.full !== false,
-      note: str(r.note),
+      note: str(r.note).slice(0, LIMITS.noteLength),
     });
     added++;
   }
@@ -210,7 +210,7 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
       skipped++;
       continue;
     }
-    const title = str(r.title);
+    const title = str(r.title).slice(0, 200);
     const key = reminderKey(car.name, title, dueOdo, dueDate);
     if (seenReminders.has(key)) {
       skipped++;

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /$
-Allow: /privacy.html
+Allow: /privacy
 Disallow: /

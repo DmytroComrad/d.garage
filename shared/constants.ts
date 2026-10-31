@@ -22,11 +22,16 @@ export const itemKindLabel = (kind: ItemKind): string =>
 
 export const LIMITS = {
   cars: 50,
-  service: 20000,
-  fuel: 20000,
+  service: 10000,
+  fuel: 10000,
   reminders: 2000,
   photos: 5000,
-  itemsPerRecord: 200,
+  itemsPerRecord: 60,
+  whatLength: 1000,
+  noteLength: 1000,
+  placeLength: 200,
+  itemNameLength: 120,
+  carNameLength: 80,
   // Безкоштовний план Workers дає 50 звернень до бази на запит: стільки вистачить і на запасний шлях по одній.
   opsPerRequest: 40,
   uploadBytes: 25 * 1024 * 1024,

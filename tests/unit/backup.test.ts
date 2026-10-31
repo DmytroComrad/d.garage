@@ -94,6 +94,14 @@ describe("злиття", () => {
     expect(res.reminders[0].notified).toBe(0);
   });
 
+  it("занадто довгий текст зі старого бекапу обрізається, а запис не губиться", () => {
+    const long = { ...backup, service: [{ ...service[0], what: "ы".repeat(5000), note: "н".repeat(5000) }], fuel: [] };
+    const res = mergeBackup(emptyData(), long, nextId);
+    expect(res.added).toBe(1);
+    expect(res.service[0].what).toHaveLength(1000);
+    expect(res.service[0].note).toHaveLength(1000);
+  });
+
   it("зіпсовані рядки пропускаються, а не ламають імпорт", () => {
     const broken = { ...backup, service: [{ car: CAR, date: "вчора", sum: "abc" }], fuel: [{ car: "нема", liters: -1 }] };
     const res = mergeBackup(emptyData(), broken, nextId);

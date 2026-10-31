@@ -14,12 +14,12 @@ const money = z
   .transform((v) => Math.round(v * 100) / 100);
 const odo = z.number().int().min(0).max(100_000_000);
 
-export const carSchema = z.object({ id, name: z.string().trim().min(1).max(80) });
+export const carSchema = z.object({ id, name: z.string().trim().min(1).max(LIMITS.carNameLength) });
 
 export const serviceItemSchema = z.object({
   id,
   kind: z.enum(["parts", "labor", "extra"]),
-  name: z.string().trim().max(200),
+  name: z.string().trim().max(LIMITS.itemNameLength),
   sum: money,
 });
 
@@ -29,10 +29,10 @@ export const serviceSchema = z.object({
   date: isoDate,
   odo: odo.nullable(),
   cat: z.string().trim().min(1).max(80),
-  what: z.string().trim().min(1).max(2000),
-  where: z.string().trim().max(200),
+  what: z.string().trim().min(1).max(LIMITS.whatLength),
+  where: z.string().trim().max(LIMITS.placeLength),
   sum: money,
-  note: z.string().trim().max(2000),
+  note: z.string().trim().max(LIMITS.noteLength),
   items: z.array(serviceItemSchema).max(LIMITS.itemsPerRecord).default([]),
 });
 
@@ -43,9 +43,9 @@ export const fuelSchema = z.object({
   odo,
   liters: z.number().finite().positive().max(100_000),
   sum: money.refine((v) => v > 0),
-  station: z.string().trim().max(200),
+  station: z.string().trim().max(LIMITS.placeLength),
   full: z.boolean(),
-  note: z.string().trim().max(2000),
+  note: z.string().trim().max(LIMITS.noteLength),
 });
 
 export const reminderSchema = z

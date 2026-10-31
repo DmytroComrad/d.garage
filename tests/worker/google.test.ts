@@ -143,6 +143,21 @@ describe("вхід через Google", () => {
     expect(url.searchParams.get("redirect_uri")).toBe(`${APP}/api/google/callback`);
   });
 
+  it("на https стан входу лежить у __Host-cookie, недоступній сусіднім піддоменам", async () => {
+    const ctx = createExecutionContext();
+    const res = await (worker.fetch as (r: Request, e: unknown, c: ExecutionContext) => Promise<Response>)(
+      new Request("https://garage.test/api/google/login", { redirect: "manual" }),
+      googleEnv,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    const cookie = res.headers.get("set-cookie") ?? "";
+    expect(cookie).toMatch(/^__Host-g_oauth=/);
+    expect(cookie).toContain("Secure");
+    expect(cookie).toContain("Path=/;");
+    expect(cookie).not.toContain("Domain");
+  });
+
   it("неправильний state не доходить до обміну коду на токен", async () => {
     const client = newClient();
     await client.call("/api/google/login");

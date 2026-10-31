@@ -39,7 +39,7 @@ export function AuthScreen() {
     if ((mode === "register" || mode === "reset") && password.length < 8) {
       return setError("Пароль — минимум 8 символов.");
     }
-    if (needsCaptcha && !captcha) return setError("Подожди, пока пройдёт проверка на робота.");
+    if (needsCaptcha && !captcha) return setError("Пройди проверку на робота выше. Если там есть галочка, отметь её.");
 
     setBusy(true);
     try {
@@ -205,7 +205,7 @@ export function AuthScreen() {
           </p>
         )}
         <p className="auth-legal">
-          <a href="/privacy.html">Как мы храним данные</a>
+          <a href="/privacy">Как мы храним данные</a>
         </p>
       </section>
     </div>

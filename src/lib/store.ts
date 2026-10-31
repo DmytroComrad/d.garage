@@ -224,9 +224,10 @@ export async function flush(): Promise<void> {
   if (flushing || !state.user) return;
   flushing = true;
   let stale = false;
+  let chunkSize: number = LIMITS.opsPerRequest;
   try {
     while (state.queue.length) {
-      const chunk = state.queue.slice(0, LIMITS.opsPerRequest);
+      const chunk = state.queue.slice(0, chunkSize);
       try {
         const { rejected } = await postJson<{ rejected: number[] }>("/api/ops", { ops: chunk });
         if (rejected.length) {
@@ -243,6 +244,11 @@ export async function flush(): Promise<void> {
           return;
         }
         if (err instanceof HttpError && err.status < 500 && err.status !== 429) {
+          // Сервер не приймає пачку: шукаємо винний запис поштучно, щоб не втратити решту.
+          if (chunk.length > 1) {
+            chunkSize = 1;
+            continue;
+          }
           // Сервер відмовив остаточно: повторювати безглуздо, інакше черга застрягне назавжди.
           setState({ queue: state.queue.slice(chunk.length) });
           saveCache();

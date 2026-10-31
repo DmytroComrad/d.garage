@@ -269,6 +269,34 @@ describe("ізоляція користувачів", () => {
   });
 });
 
+describe("cookie на https", () => {
+  const SITE = "https://garage.test";
+  const post = (path: string, body: unknown, cookie = "") =>
+    (exports as unknown as { default: { fetch: (url: string, init: RequestInit) => Promise<Response> } }).default.fetch(
+      `${SITE}${path}`,
+      {
+        method: "POST",
+        headers: { origin: SITE, "content-type": "application/json", cookie },
+        body: JSON.stringify(body),
+      },
+    );
+
+  it("сесія живе в __Host-cookie, і вихід її прибирає", async () => {
+    const email = `https-${crypto.randomUUID()}@example.com`;
+    const res = await post("/api/auth/register", { email, password: "correct horse battery" });
+    expect(res.status).toBe(200);
+    const cookie = res.headers.get("set-cookie") ?? "";
+    expect(cookie).toMatch(/^__Host-session=/);
+    expect(cookie).toContain("Secure");
+    expect(cookie).toContain("Path=/");
+    expect(cookie).toContain("HttpOnly");
+
+    const out = await post("/api/auth/logout", {}, cookie.split(";")[0]);
+    expect(out.status).toBe(200);
+    expect(out.headers.get("set-cookie") ?? "").toMatch(/^__Host-session=;.*Secure/);
+  });
+});
+
 describe("заголовки й службове", () => {
   it("API не кешується і має заголовки безпеки", async () => {
     const res = await newClient().call("/api/config");

@@ -409,7 +409,7 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
           </span>
         </label>
         <Field label="Заметка">
-          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
+          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} />
         </Field>
         <ReminderFields
           draft={reminder}
@@ -544,7 +544,7 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
           </div>
         </div>
         <Field label="Что сделано / куплено">
-          <textarea rows={2} value={what} onChange={(e) => setWhat(e.target.value)} maxLength={2000} />
+          <textarea rows={2} value={what} onChange={(e) => setWhat(e.target.value)} maxLength={1000} />
         </Field>
         <Field label="Где">
           <input value={where} onChange={(e) => setWhere(e.target.value)} list={whereId} maxLength={200} />
@@ -584,7 +584,7 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
                     value={it.name}
                     placeholder={ITEM_KINDS.find((k) => k.value === it.kind)?.placeholder}
                     list={namesId}
-                    maxLength={200}
+                    maxLength={120}
                     onChange={(e) => patchItem(it.id, { name: e.target.value })}
                   />
                   <input
@@ -627,7 +627,7 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
         </div>
 
         <Field label="Заметки">
-          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
+          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} />
         </Field>
         <ReminderFields
           draft={reminder}

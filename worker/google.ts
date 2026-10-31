@@ -23,7 +23,6 @@ const SHEETS_URL = "https://sheets.googleapis.com/v4/spreadsheets";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const ROOT_FOLDER = "Гараж Амедро";
-const OAUTH_COOKIE = "g_oauth";
 const now = () => Math.floor(Date.now() / 1000);
 
 const DISCONNECTED = "Google Диск не подключён.";
@@ -156,6 +155,10 @@ export async function revokeGoogle(env: Bindings, userId: string): Promise<void>
   });
 }
 
+const isHttps = (c: Context<AppEnv>): boolean => new URL(c.req.url).protocol === "https:";
+/** __Host- не дає сусідньому піддомену підставити свою cookie зі станом входу. */
+const oauthCookie = (c: Context<AppEnv>): string => (isHttps(c) ? "__Host-g_oauth" : "g_oauth");
+
 const redirectUri = (env: Bindings): string => `${env.APP_URL}/api/google/callback`;
 
 type OAuthState = { state: string; verifier: string; mode: "login" | "drive"; uid: string | null };
@@ -165,10 +168,10 @@ const beginOAuth = async (c: Context<AppEnv>, mode: OAuthState["mode"], uid: str
   const state = randomToken(24);
   const verifier = randomToken(48);
   const payload: OAuthState = { state, verifier, mode, uid };
-  setCookie(c, OAUTH_COOKIE, btoa(JSON.stringify(payload)), {
-    path: "/api/google",
+  setCookie(c, oauthCookie(c), btoa(JSON.stringify(payload)), {
+    path: "/",
     httpOnly: true,
-    secure: new URL(c.req.url).protocol === "https:",
+    secure: isHttps(c),
     sameSite: "Lax",
     maxAge: 600,
   });
@@ -303,8 +306,8 @@ google.get("/drive/connect", requireUser, (c) =>
 );
 
 google.get("/callback", async (c) => {
-  const raw = getCookie(c, OAUTH_COOKIE);
-  deleteCookie(c, OAUTH_COOKIE, { path: "/api/google" });
+  const raw = getCookie(c, oauthCookie(c));
+  deleteCookie(c, oauthCookie(c), { path: "/", secure: isHttps(c) });
   let saved: OAuthState | null = null;
   try {
     saved = raw ? (JSON.parse(atob(raw)) as OAuthState) : null;

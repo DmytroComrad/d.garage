@@ -192,7 +192,7 @@ auth.post("/delete-account", requireUser, async (c) => {
   } else if (body.confirm !== user.email) {
     throw new ApiError(400, "Введи свою почту для подтверждения.");
   }
-  c.executionCtx.waitUntil(revokeGoogle(c.env, user.id).catch(() => undefined));
+  await revokeGoogle(c.env, user.id).catch(() => undefined);
   // Каскад прибирає всі машини, записи, сесії та токени Google.
   await c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
   clearSessionCookie(c);
