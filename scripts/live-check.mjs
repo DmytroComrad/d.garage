@@ -141,14 +141,18 @@ try {
   check("незмінні дані відповідають 304", notModified.etag && notModified.status === 304);
 
   // Дані мають бути на сервері, а не лише на пристрої.
-  await page.evaluate(() => localStorage.clear());
+  // Мову лишаємо: перевірка не про неї.
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem("garage-ui", '{"lang":"ru"}');
+  });
   await page.reload();
   await page.getByRole("heading", { level: 1, name: "Демо-машина" }).waitFor();
   check("після очищення браузера дані прийшли з сервера", norm(await page.locator(".gauge-main dd").textContent()) === "42 948 ₴");
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${OUT}/live-desktop-hero.png` });
 
-  for (const [label, tab] of [["fuel", "Заправки"], ["reminders", "Напоминания"], ["gallery", "Галерея"], ["stats", "Статистика"], ["data", "Данные"], ["service", "Обслуживание"]]) {
+  for (const [label, tab] of [["fuel", "Заправки"], ["reminders", "Напоминания"], ["wishes", "Хотелки"], ["gallery", "Галерея"], ["stats", "Статистика"], ["data", "Данные"], ["service", "Обслуживание"]]) {
     await page.getByRole("tab", { name: tab }).click();
     await page.waitForTimeout(350);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -172,7 +176,7 @@ try {
   const text = await readFile(await txt.path(), "utf8");
   await page.getByLabel("Файл бэкапа").setInputFiles({ name: "backup.txt", mimeType: "text/plain", buffer: Buffer.from(text) });
   const restored = await page.getByRole("status").filter({ hasText: "Загружено" }).textContent();
-  check("повторне відновлення без дублів", /добавлено 0, уже были — 10/.test(norm(restored)), norm(restored));
+  check("повторне відновлення без дублів", /добавлено 0, уже были — 12/.test(norm(restored)), norm(restored));
   const [xlsx] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Скачать таблицу .xlsx" }).click()]);
   check("таблиця скачується в .xlsx", xlsx.suggestedFilename().endsWith(".xlsx"));
 
