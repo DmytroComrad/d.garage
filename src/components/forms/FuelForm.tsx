@@ -1,9 +1,10 @@
 import { useId, useState, type FormEvent } from "react";
 import { LIMITS } from "../../../shared/constants";
-import { fmtKm, fmtMoney, fmtNum, genId, todayISO } from "../../../shared/format";
+import { fmtDist, fmtMoney, fmtNum, genId, numInput, todayISO, unitLabel } from "../../../shared/format";
 import { parseDecimal, parseMoney, parseOdo } from "../../../shared/parse";
-import type { FuelRecord, Op } from "../../../shared/types";
-import { closeDialog, dispatch, toast, useStore } from "../../lib/store";
+import { fromKm, toKm } from "../../../shared/prefs";
+import type { FuelRecord } from "../../../shared/types";
+import { closeDialog, deleteRecordsOps, dispatch, toast, useStore, useT } from "../../lib/store";
 import { Modal } from "../Modal";
 import {
   CarSelect,
@@ -21,6 +22,7 @@ import { PhotoField } from "./PhotoField";
 import { ReminderFields } from "./ReminderFields";
 
 export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: string }) {
+  const t = useT();
   const active = useStore((s) => s.active);
   const cars = useStore((s) => s.data.cars);
   const allFuel = useStore((s) => s.data.fuel);
@@ -28,9 +30,9 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
 
   const [car, setCar] = useState(record?.car ?? carProp ?? active ?? cars[0]?.id ?? "");
   const [date, setDate] = useState(record?.date ?? todayISO());
-  const [odo, setOdo] = useState(record ? String(record.odo) : "");
-  const [liters, setLiters] = useState(record ? String(record.liters).replace(".", ",") : "");
-  const [sum, setSum] = useState(record ? String(record.sum).replace(".", ",") : "");
+  const [odo, setOdo] = useState(record ? String(fromKm(record.odo)) : "");
+  const [liters, setLiters] = useState(record ? numInput(record.liters) : "");
+  const [sum, setSum] = useState(record ? numInput(record.sum) : "");
   const [station, setStation] = useState(record?.station ?? "");
   const [full, setFull] = useState(record?.full ?? true);
   const [note, setNote] = useState(record?.note ?? "");
@@ -43,7 +45,7 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
 
   const stationsId = useId();
   const parsedOdo = parseOdo(odo);
-  const baseOdo = typeof parsedOdo === "number" ? parsedOdo : null;
+  const baseOdo = typeof parsedOdo === "number" ? toKm(parsedOdo) : null;
   const parsedLiters = parseDecimal(liters);
   const parsedSum = parseMoney(sum);
   const price =
@@ -54,22 +56,22 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!date) return setError("Укажи дату.");
-    if (parsedOdo === "invalid") return setError("Пробег — только цифры.");
-    if (parsedOdo === null) return setError("Для заправки нужен пробег — без него не посчитать расход.");
+    if (!date) return setError(t.serviceForm.errDate);
+    if (parsedOdo === "invalid") return setError(t.serviceForm.errOdo);
+    if (parsedOdo === null || baseOdo === null) return setError(t.fuelForm.errOdoRequired);
     if (typeof parsedLiters !== "number" || parsedLiters <= 0 || parsedLiters > LIMITS.maxLiters) {
-      return setError("Укажи литры.");
+      return setError(t.fuelForm.errLiters);
     }
     if (typeof parsedSum !== "number" || parsedSum <= 0 || parsedSum > LIMITS.maxSum) {
-      return setError("Укажи сумму с чека.");
+      return setError(t.fuelForm.errSum);
     }
 
     const id = record?.id ?? genId();
     const built = reminderForRecord(reminder, {
       car,
       recordId: id,
-      baseOdo: parsedOdo,
-      fallbackTitle: "Обслуживание",
+      baseOdo,
+      fallbackTitle: t.reminders.defaultTitle,
       linked,
     });
     if ("error" in built) return setError(built.error);
@@ -78,7 +80,7 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
       id,
       car,
       date,
-      odo: parsedOdo,
+      odo: baseOdo,
       liters: parsedLiters,
       sum: parsedSum,
       station: station.trim(),
@@ -91,39 +93,37 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
 
   const remove = () => {
     if (!record) return;
-    const ops: Op[] = [{ type: "fuel.del", id: record.id }];
-    if (linked) ops.push({ type: "reminder.del", id: linked.id });
-    dispatch(...ops);
+    dispatch(...deleteRecordsOps("fuel", [record.id]));
     closeDialog();
-    toast("Запись удалена");
+    toast(t.common.recordDeleted);
   };
 
   return (
-    <Modal title={record ? "Заправка" : "Новая заправка"} onClose={() => closeDialog()}>
+    <Modal title={record ? t.fuelForm.titleEdit : t.fuelForm.titleNew} onClose={() => closeDialog()}>
       <form onSubmit={submit} noValidate>
         <CarSelect value={car} onChange={setCar} />
         <div className="field-row">
-          <Field label="Дата">
+          <Field label={t.serviceForm.date}>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
-          <Field label="Пробег, км" hint={prev != null ? `Прошлый: ${fmtKm(prev)}` : undefined}>
+          <Field label={t.serviceForm.odo(unitLabel())} hint={prev != null ? t.serviceForm.prev(fmtDist(prev)) : undefined}>
             <input
               inputMode="numeric"
               value={odo}
               onChange={(e) => setOdo(e.target.value)}
-              placeholder={prev != null ? fmtNum(prev) : ""}
+              placeholder={prev != null ? fmtNum(fromKm(prev)) : ""}
             />
           </Field>
         </div>
         <div className="field-row">
-          <Field label="Литры">
+          <Field label={t.fuelForm.liters}>
             <input inputMode="decimal" value={liters} onChange={(e) => setLiters(e.target.value)} />
           </Field>
-          <Field label="Сумма ₴" hint={price != null ? `≈ ${fmtMoney(price)}/л` : undefined}>
+          <Field label={t.serviceForm.sum} hint={price != null ? `≈ ${t.units.perLiter(fmtMoney(price))}` : undefined}>
             <input inputMode="decimal" value={sum} onChange={(e) => setSum(e.target.value)} />
           </Field>
         </div>
-        <Field label="АЗС">
+        <Field label={t.fuelForm.station}>
           <input
             value={station}
             onChange={(e) => setStation(e.target.value)}
@@ -135,10 +135,10 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
         <label className="check">
           <input type="checkbox" checked={full} onChange={(e) => setFull(e.target.checked)} />
           <span>
-            Полный бак <span className="muted">— нужно для точного расхода</span>
+            {t.fuelForm.full} <span className="muted">{t.fuelForm.fullHint}</span>
           </span>
         </label>
-        <Field label="Заметка">
+        <Field label={t.fuelForm.note}>
           <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={LIMITS.noteLength} />
         </Field>
         <ReminderFields draft={reminder} onChange={setReminder} baseOdo={baseOdo} baseDate={date} />

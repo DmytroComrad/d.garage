@@ -1,8 +1,8 @@
 {
-  "name": "Гараж Амедро",
-  "short_name": "Гараж",
-  "description": "Бортжурнал машины: ремонты, покупки, заправки и напоминания",
-  "lang": "ru",
+  "name": "D.Garage",
+  "short_name": "D.Garage",
+  "description": "Car logbook: repairs, purchases, fill-ups and reminders",
+  "lang": "en",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

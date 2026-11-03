@@ -1,6 +1,14 @@
 import type { z } from "zod";
 import type { RawBackup } from "./backup";
-import type { carSchema, fuelSchema, opSchema, reminderSchema, serviceItemSchema, serviceSchema } from "./schema";
+import type {
+  carSchema,
+  fuelSchema,
+  opSchema,
+  reminderSchema,
+  serviceItemSchema,
+  serviceSchema,
+  wishSchema,
+} from "./schema";
 
 /*
  * Типи записів виводяться зі схем сервера, тому не можуть від них розійтися.
@@ -12,6 +20,8 @@ export type ItemKind = ServiceItem["kind"];
 export type ServiceRecord = z.output<typeof serviceSchema>;
 export type FuelRecord = z.output<typeof fuelSchema>;
 export type Reminder = z.output<typeof reminderSchema>;
+/** Хотілка: план на машину з приблизною ціною. Виконана може посилатись на запис обслуговування. */
+export type Wish = z.output<typeof wishSchema>;
 export type Op = z.output<typeof opSchema>;
 
 /** Рівні сповіщення: 0 — ще рано, 1 — за 1000 км / 30 днів, 2 — за 500 км / 7 днів, 3 — термін настав. */
@@ -39,18 +49,20 @@ export type GarageData = {
   service: ServiceRecord[];
   fuel: FuelRecord[];
   reminders: Reminder[];
+  wishes: Wish[];
   photos: Photo[];
   demo: boolean;
 };
 
 export type Backup = {
-  app: "garage-amedro";
-  v: 2;
+  app: "d-garage";
+  v: 3;
   saved: string;
   cars: Car[];
   service: ServiceRecord[];
   fuel: FuelRecord[];
   reminders: Reminder[];
+  wishes: Wish[];
 };
 
 export type User = {

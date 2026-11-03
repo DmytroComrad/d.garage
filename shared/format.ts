@@ -1,57 +1,96 @@
+import { LOCALES, messages } from "./i18n";
+import { fromKm, prefs, unitFactor, type DateFormat, type Lang } from "./prefs";
+
+/*
+ * Форматування для інтерфейсу: мова, одиниці й формат дати беруться з поточних налаштувань.
+ * Вхідні відстані завжди в кілометрах, як у базі.
+ */
+
 const NBSP = " ";
 
-const money0 = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
-const money2 = new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const int = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
-const dec1 = new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const formatters = new Map<string, Intl.NumberFormat>();
+const numberFormat = (min: number, max: number, lang: Lang = prefs().lang): Intl.NumberFormat => {
+  const key = `${lang}|${min}|${max}`;
+  let f = formatters.get(key);
+  if (!f) {
+    f = new Intl.NumberFormat(LOCALES[lang], { minimumFractionDigits: min, maximumFractionDigits: max });
+    formatters.set(key, f);
+  }
+  return f;
+};
+
+const ok = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
 
 export const fmtMoney0 = (n: number | null | undefined): string =>
-  n == null || !Number.isFinite(n) ? "—" : `${money0.format(n)}${NBSP}₴`;
+  ok(n) ? `${numberFormat(0, 0).format(n)}${NBSP}₴` : "—";
 
 export const fmtMoney = (n: number | null | undefined): string =>
-  n == null || !Number.isFinite(n) ? "—" : `${money2.format(n)}${NBSP}₴`;
+  ok(n) ? `${numberFormat(2, 2).format(n)}${NBSP}₴` : "—";
 
-export const fmtNum = (n: number): string => int.format(n);
-export const fmtKm = (n: number | null | undefined): string =>
-  n == null || !Number.isFinite(n) ? "—" : `${int.format(n)}${NBSP}км`;
+export const fmtNum = (n: number): string => numberFormat(0, 0).format(n);
 
-export const fmtDec1 = (n: number | null | undefined): string =>
-  n == null || !Number.isFinite(n) ? "—" : dec1.format(n);
+/** Ціле число з одиницею відстані: «12 000 км», «5,000 mi», «3 милі». Число вже в потрібних одиницях. */
+export const fmtUnits = (n: number): string => {
+  const { unit } = prefs();
+  return `${fmtNum(n)}${NBSP}${messages().units.dist[unit](n)}`;
+};
+
+/** Відстань із бази (км) у вибраних одиницях. */
+export const fmtDist = (km: number | null | undefined): string => (ok(km) ? fmtUnits(fromKm(km)) : "—");
+
+/** Позначка одиниці для підписів полів: «км», «mi», «мили». */
+export const unitLabel = (): string => messages().units.label[prefs().unit];
+
+export const fmtDec1 = (n: number | null | undefined): string => (ok(n) ? numberFormat(1, 1).format(n) : "—");
 
 export const fmtLiters = (n: number | null | undefined): string =>
-  n == null || !Number.isFinite(n) ? "—" : `${money2.format(n)}${NBSP}л`;
+  ok(n) ? `${numberFormat(2, 2).format(n)}${NBSP}${messages().units.liter}` : "—";
 
-export const fmtLiters1 = (n: number): string => `${dec1.format(n)}${NBSP}л`;
+export const fmtLiters1 = (n: number): string => `${numberFormat(1, 1).format(n)}${NBSP}${messages().units.liter}`;
+
+/** Витрата в базі — л/100 км. У милях — л/100 миль. */
+export const consumptionValue = (per100km: number): number => per100km * unitFactor();
+
+export const fmtConsumptionValue = (n: number | null | undefined): string => (ok(n) ? fmtDec1(consumptionValue(n)) : "—");
 
 export const fmtConsumption = (n: number | null | undefined): string =>
-  n == null || !Number.isFinite(n) ? "—" : `${dec1.format(n)}${NBSP}л/100`;
+  ok(n) ? `${fmtDec1(consumptionValue(n))}${NBSP}${messages().units.per100[prefs().unit]}` : "—";
 
-export const fmtDate = (iso: string | null | undefined): string => {
-  if (!iso) return "—";
+/** Вартість кілометра → вартість вибраної одиниці відстані. */
+export const fmtPerDist = (perKm: number | null | undefined): string => (ok(perKm) ? fmtMoney(perKm * unitFactor()) : "—");
+
+/** Число для поля введення: кома в українській і російській, крапка в англійській. */
+export const numInput = (n: number): string => (prefs().lang === "en" ? String(n) : String(n).replace(".", ","));
+
+export const formatDate = (iso: string, format: DateFormat): string => {
   const [y, m, d] = iso.split("-");
+  if (format === "mdy") return `${m}/${d}/${y}`;
+  if (format === "ymd") return `${y}-${m}-${d}`;
   return `${d}.${m}.${y}`;
 };
 
-export const MONTHS = [
-  "январь", "февраль", "март", "апрель", "май", "июнь",
-  "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
-];
-export const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+export const fmtDate = (iso: string | null | undefined): string => (iso ? formatDate(iso, prefs().dateFormat) : "—");
 
-/** "2026-08" → "август 2026" */
+/** Дата й час із секунд Unix: 24-годинний формат, крім американського порядку дати. */
+export const fmtDateTime = (seconds: number): string => {
+  const date = new Date(seconds * 1000);
+  const iso = todayISO(date);
+  const { dateFormat, lang } = prefs();
+  const time = date.toLocaleTimeString(LOCALES[lang], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: dateFormat === "mdy",
+  });
+  return `${formatDate(iso, dateFormat)} ${time}`;
+};
+
+/** "2026-08" → "серпень 2026" */
 export const fmtMonthKey = (key: string): string => {
   const [y, m] = key.split("-").map(Number);
-  return `${MONTHS[m - 1]} ${y}`;
+  return `${messages().months[m - 1]} ${y}`;
 };
 
-export const plural = (n: number, forms: [string, string, string]): string => {
-  const a = Math.abs(n) % 100;
-  const b = a % 10;
-  if (a > 10 && a < 20) return forms[2];
-  if (b > 1 && b < 5) return forms[1];
-  if (b === 1) return forms[0];
-  return forms[2];
-};
+export const monthShort = (index: number): string => messages().monthsShort[index];
 
 export const todayISO = (now: Date = new Date()): string => {
   const y = now.getFullYear();

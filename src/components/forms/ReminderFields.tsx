@@ -1,18 +1,14 @@
 import { useId } from "react";
 import { LIMITS } from "../../../shared/constants";
-import { fmtKm, fmtNum, todayISO } from "../../../shared/format";
+import { fmtDist, fmtNum, fmtUnits, todayISO, unitLabel } from "../../../shared/format";
 import { parseOdo } from "../../../shared/parse";
-import { addMonths, type ReminderDraft } from "../../../shared/reminders";
-import { useStore } from "../../lib/store";
+import { toKm } from "../../../shared/prefs";
+import { DIST_PRESETS, DIST_THRESHOLDS, addMonths, type ReminderDraft } from "../../../shared/reminders";
+import { useStore, useT } from "../../lib/store";
+import { ReminderNote } from "../ReminderNote";
 import { Field, Suggest } from "./common";
 
-export const KM_PRESETS = [5000, 10000, 15000];
-const MONTH_PRESETS: [number, string][] = [
-  [6, "через полгода"],
-  [12, "через год"],
-];
-
-/** Блок «Напомнить через…» у формі запису. */
+/** Блок «Напомнить через…» у формі запису. Відстань — у вибраних одиницях. */
 export function ReminderFields({
   draft,
   onChange,
@@ -24,58 +20,68 @@ export function ReminderFields({
   baseOdo: number | null;
   baseDate: string;
 }) {
+  const t = useT();
+  const unit = useStore((s) => s.prefs.unit);
   const listId = useId();
   const reminders = useStore((s) => s.data.reminders);
   const km = parseOdo(draft.km);
-  const target = typeof km === "number" && km > 0 && baseOdo != null ? baseOdo + km : null;
+  const target = typeof km === "number" && km > 0 && baseOdo != null ? baseOdo + toKm(km) : null;
+  const months: [number, string][] = [
+    [6, t.reminderFields.halfYear],
+    [12, t.reminderFields.year],
+  ];
+  const limits = DIST_THRESHOLDS[unit];
 
   return (
     <div className={`reminder-box${draft.on ? " is-on" : ""}`}>
       <label className="check">
         <input type="checkbox" checked={draft.on} onChange={(e) => onChange({ ...draft, on: e.target.checked })} />
-        <span>Напомнить через…</span>
+        <span>{t.reminderFields.toggle}</span>
       </label>
       {draft.on && (
         <div className="reminder-fields">
-          <Field label="Что нужно сделать или заменить">
+          <Field label={t.reminderFields.what}>
             <input
               value={draft.title}
               onChange={(e) => onChange({ ...draft, title: e.target.value })}
-              placeholder="Например: замена масла"
+              placeholder={t.reminderFields.placeholder}
               list={listId}
               maxLength={LIMITS.titleLength}
             />
           </Field>
           <Suggest id={listId} values={reminders.map((r) => r.title)} />
           <div className="field-row">
-            <Field label="Через, км" hint={target != null ? `На пробеге ${fmtKm(target)}` : undefined}>
+            <Field
+              label={t.reminderFields.inDist(unitLabel())}
+              hint={target != null ? t.reminderFields.target(fmtDist(target)) : undefined}
+            >
               <input
                 inputMode="numeric"
                 value={draft.km}
                 onChange={(e) => onChange({ ...draft, km: e.target.value })}
-                placeholder="10 000"
+                placeholder={fmtNum(DIST_PRESETS[unit][1])}
               />
             </Field>
-            <Field label="Или к дате">
+            <Field label={t.reminderFields.orDate}>
               <input type="date" value={draft.date} onChange={(e) => onChange({ ...draft, date: e.target.value })} />
             </Field>
           </div>
           <div className="preset-row">
-            {KM_PRESETS.map((v) => (
+            {DIST_PRESETS[unit].map((v) => (
               <button
                 key={v}
                 type="button"
                 className={`preset${km === v ? " is-on" : ""}`}
                 onClick={() => onChange({ ...draft, km: String(v) })}
               >
-                {fmtNum(v)} км
+                {fmtUnits(v)}
               </button>
             ))}
-            {MONTH_PRESETS.map(([months, label]) => {
-              const value = addMonths(baseDate || todayISO(), months);
+            {months.map(([count, label]) => {
+              const value = addMonths(baseDate || todayISO(), count);
               return (
                 <button
-                  key={months}
+                  key={count}
                   type="button"
                   className={`preset${draft.date === value ? " is-on" : ""}`}
                   onClick={() => onChange({ ...draft, date: value })}
@@ -85,7 +91,8 @@ export function ReminderFields({
               );
             })}
           </div>
-          <p className="field-hint">Покажем уведомление за 1000 и за 500 км, а по дате — за месяц и за неделю.</p>
+          <p className="field-hint">{t.reminderFields.hint(fmtNum(limits.first), fmtUnits(limits.second))}</p>
+          <ReminderNote />
         </div>
       )}
     </div>

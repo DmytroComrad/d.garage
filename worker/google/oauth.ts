@@ -1,6 +1,8 @@
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import type { Lang } from "../../shared/prefs";
 import { encryptToken, randomToken, sha256 } from "../crypto";
+import { langOf } from "../messages";
 import { createSession, isHttps, loadUser, requireUser } from "../session";
 import { ApiError, type AppEnv, type Bindings } from "../types";
 import { DRIVE_SCOPE, TOKEN_URL, ensureFolders, getConnection, googleConfigured, revokeGoogle, tokenKey } from "./connection";
@@ -12,7 +14,8 @@ const now = () => Math.floor(Date.now() / 1000);
 const oauthCookie = (c: Context<AppEnv>): string => (isHttps(c) ? "__Host-g_oauth" : "g_oauth");
 const redirectUri = (env: Bindings): string => `${env.APP_URL}/api/google/callback`;
 
-type OAuthState = { state: string; verifier: string; mode: "login" | "drive"; uid: string | null };
+/** lang — мова сайту: нею Google покаже екран згоди, нею ж назвемо папки на Диску. */
+type OAuthState = { state: string; verifier: string; mode: "login" | "drive"; uid: string | null; lang?: Lang };
 
 type Tokens = {
   id_token?: string;
@@ -29,10 +32,11 @@ const beginOAuth = async (
   scope: string,
   extra: Record<string, string>,
 ) => {
-  if (!googleConfigured(c.env)) throw new ApiError(503, "Google пока не настроен на сервере.");
+  if (!googleConfigured(c.env)) throw new ApiError(503, "googleNotConfigured");
   const state = randomToken(24);
   const verifier = randomToken(48);
-  const payload: OAuthState = { state, verifier, mode, uid };
+  const lang = langOf(c.req.query("lang"));
+  const payload: OAuthState = { state, verifier, mode, uid, lang };
   setCookie(c, oauthCookie(c), btoa(JSON.stringify(payload)), {
     path: "/",
     httpOnly: true,
@@ -50,6 +54,7 @@ const beginOAuth = async (
     // PKCE S256 — це і є SHA-256 у base64url.
     code_challenge: await sha256(verifier),
     code_challenge_method: "S256",
+    hl: lang,
     ...extra,
   }).toString();
   return c.redirect(url.toString(), 302);
@@ -121,7 +126,7 @@ async function finishLogin(c: Context<AppEnv>, claims: Record<string, unknown>):
   return c.redirect("/");
 }
 
-async function finishDrive(c: Context<AppEnv>, uid: string | null, tokens: Tokens): Promise<Response> {
+async function finishDrive(c: Context<AppEnv>, uid: string | null, tokens: Tokens, lang: Lang): Promise<Response> {
   const user = await loadUser(c);
   if (!user || user.id !== uid) return c.redirect("/?drive=error");
   if (!tokens.scope?.split(" ").includes(DRIVE_SCOPE) || !tokens.access_token) return c.redirect("/?drive=scope");
@@ -155,7 +160,7 @@ async function finishDrive(c: Context<AppEnv>, uid: string | null, tokens: Token
     .run();
 
   const conn = await getConnection(c.env.DB, user.id);
-  if (conn) await ensureFolders(c.env, conn, tokens.access_token);
+  if (conn) await ensureFolders(c.env, conn, tokens.access_token, lang);
   return c.redirect("/?drive=connected");
 }
 
@@ -203,7 +208,7 @@ google.get("/callback", async (c) => {
   if (!res.ok) return c.redirect(saved.mode === "drive" ? "/?drive=error" : "/?google=error");
   const tokens = await res.json<Tokens>();
 
-  if (saved.mode === "drive") return finishDrive(c, saved.uid, tokens);
+  if (saved.mode === "drive") return finishDrive(c, saved.uid, tokens, langOf(saved.lang));
   if (!tokens.id_token) return c.redirect("/?google=error");
   return finishLogin(c, decodeIdToken(tokens.id_token));
 });

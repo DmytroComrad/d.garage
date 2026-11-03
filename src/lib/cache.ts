@@ -1,5 +1,6 @@
 import type { DriveStatus, GarageData, Op, User } from "../../shared/types";
 
+// Ключі зі старою назвою проєкту: зміна стерла б кеш і черзі незбережених змін у тих, хто вже користується.
 const CACHE_KEY = "garage-amedro-v1";
 const PENDING_KEY = "garage-amedro-pending-v1";
 

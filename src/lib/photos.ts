@@ -1,5 +1,6 @@
 import { LIMITS } from "../../shared/constants";
 import { genId } from "../../shared/format";
+import { messages } from "../../shared/i18n";
 import type { Photo, PhotoKind, PhotoResponse } from "../../shared/types";
 import { HttpError, errorText, postForm } from "./api";
 import { addPhoto, flush, getState, resolveCarId, setDrive, setUploading, toast } from "./store";
@@ -51,7 +52,7 @@ export async function uploadPhotos(files: File[], target: UploadTarget): Promise
   let done = 0;
   for (const file of files) {
     try {
-      if (file.size > LIMITS.uploadBytes) throw new HttpError(413, `«${file.name}» больше 25 МБ.`);
+      if (file.size > LIMITS.uploadBytes) throw new HttpError(413, messages().photos.tooBig(file.name));
       const prepared = await prepareImage(file);
       const form = new FormData();
       form.set("id", genId());
@@ -73,7 +74,7 @@ export async function uploadPhotos(files: File[], target: UploadTarget): Promise
       setUploading(-1);
     }
   }
-  if (done) toast(done === 1 ? "Фото загружено" : `Загружено фото: ${done}`);
+  if (done) toast(messages().photos.uploaded(done));
 }
 
 export const photoUrl = (photo: Pick<Photo, "id">, size: "thumb" | "full"): string =>

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { niceStep, type FuelPoint, type MonthRow } from "../../shared/calc";
-import { MONTHS_SHORT, fmtConsumption, fmtDate, fmtDec1, fmtKm, fmtMoney0, fmtMonthKey } from "../../shared/format";
+import { consumptionValue, fmtConsumption, fmtDate, fmtDec1, fmtDist, fmtMoney0, fmtMonthKey, monthShort } from "../../shared/format";
+import { messages } from "../../shared/i18n";
+import { prefs } from "../../shared/prefs";
+import { useT } from "../lib/store";
 
 /** Ширина контейнера. Графік перемальовується при зміні вікна з затримкою 150 мс. */
 const useWidth = (): [React.RefObject<HTMLDivElement | null>, number] => {
@@ -24,12 +27,15 @@ const useWidth = (): [React.RefObject<HTMLDivElement | null>, number] => {
   return [ref, width];
 };
 
+/** Дробова частина з комою або крапкою, як прийнято в мові інтерфейсу. */
+const decimal = (v: number, digits: number): string => {
+  const text = Number.isInteger(v) ? String(v) : v.toFixed(digits);
+  return prefs().lang === "en" ? text : text.replace(".", ",");
+};
+
 const axisLabel = (v: number): string => {
   if (v === 0) return "0";
-  if (v >= 1000) {
-    const k = v / 1000;
-    return `${String(Number.isInteger(k) ? k : k.toFixed(1)).replace(".", ",")} тыс`;
-  }
+  if (v >= 1000) return messages().units.axisThousands(decimal(v / 1000, 1));
   return String(v);
 };
 
@@ -57,6 +63,7 @@ const roundedTop = (x: number, y: number, w: number, h: number, r = 4): string =
 };
 
 export function MonthlyChart({ rows }: { rows: MonthRow[] }) {
+  const t = useT();
   const [ref, width] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
   const height = 260;
@@ -76,23 +83,23 @@ export function MonthlyChart({ rows }: { rows: MonthRow[] }) {
   const GAP = 2;
 
   const active = hover != null ? rows[hover] : null;
-  const summary = `Траты по месяцам: ${rows.map((r) => `${fmtMonthKey(r.key)} ${fmtMoney0(r.total)}`).join(", ")}`;
+  const summary = t.charts.monthlyAria(rows.map((r) => `${fmtMonthKey(r.key)} ${fmtMoney0(r.total)}`).join(", "));
 
   return (
     <div ref={ref} className="chart" onPointerLeave={() => setHover(null)}>
       {width > 0 && (
         <svg width={width} height={height} role="img" aria-label={summary}>
-          {ticks.map((t) => (
-            <g key={t}>
+          {ticks.map((tick) => (
+            <g key={tick}>
               <line
                 x1={m.left}
                 x2={width - m.right}
-                y1={y(t)}
-                y2={y(t)}
-                className={t === 0 ? "axis-zero" : "axis-grid"}
+                y1={y(tick)}
+                y2={y(tick)}
+                className={tick === 0 ? "axis-zero" : "axis-grid"}
               />
-              <text x={m.left - 8} y={y(t) + 4} textAnchor="end" className="axis-label">
-                {axisLabel(t)}
+              <text x={m.left - 8} y={y(tick) + 4} textAnchor="end" className="axis-label">
+                {axisLabel(tick)}
               </text>
             </g>
           ))}
@@ -120,7 +127,7 @@ export function MonthlyChart({ rows }: { rows: MonthRow[] }) {
                 )}
                 {showLabel && (
                   <text x={x + barW / 2} y={height - 7} textAnchor="middle" className="axis-label">
-                    {MONTHS_SHORT[month]}
+                    {monthShort(month)}
                   </text>
                 )}
                 <rect
@@ -141,29 +148,41 @@ export function MonthlyChart({ rows }: { rows: MonthRow[] }) {
         <Tooltip x={m.left + band * hover + band / 2} y={m.top + 4} width={width}>
           <strong>{fmtMonthKey(active.key)}</strong>
           <span className="tip-row">
-            <i className="dot dot-service" /> Обслуживание <b>{fmtMoney0(active.service)}</b>
+            <i className="dot dot-service" /> {t.charts.service} <b>{fmtMoney0(active.service)}</b>
           </span>
           <span className="tip-row">
-            <i className="dot dot-fuel" /> Топливо <b>{fmtMoney0(active.fuel)}</b>
+            <i className="dot dot-fuel" /> {t.charts.fuel} <b>{fmtMoney0(active.fuel)}</b>
           </span>
           <span className="tip-row tip-total">
-            Всего <b>{fmtMoney0(active.total)}</b>
+            {t.charts.total} <b>{fmtMoney0(active.total)}</b>
           </span>
         </Tooltip>
       )}
       <div className="legend">
         <span>
-          <i className="dot dot-service" /> Обслуживание
+          <i className="dot dot-service" /> {t.charts.service}
         </span>
         <span>
-          <i className="dot dot-fuel" /> Топливо
+          <i className="dot dot-fuel" /> {t.charts.fuel}
         </span>
       </div>
     </div>
   );
 }
 
-export function ConsumptionChart({ points, avg, height = 220 }: { points: FuelPoint[]; avg: number | null; height?: number }) {
+/** Витрата в базі — л/100 км. Графік малює її в одиницях, які вибрано в налаштуваннях. */
+export function ConsumptionChart({
+  points: raw,
+  avg: rawAvg,
+  height = 220,
+}: {
+  points: FuelPoint[];
+  avg: number | null;
+  height?: number;
+}) {
+  const t = useT();
+  const points = useMemo(() => raw.map((p) => ({ ...p, value: consumptionValue(p.value) })), [raw, t]);
+  const avg = rawAvg == null ? null : consumptionValue(rawAvg);
   const [ref, width] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
   const m = { top: 12, right: 14, bottom: 24, left: 34 };
@@ -188,17 +207,17 @@ export function ConsumptionChart({ points, avg, height = 220 }: { points: FuelPo
   const tickValues = Array.from({ length: ticks + 1 }, (_, i) => lo + ((hi - lo) * i) / ticks);
   const path = points.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.value)}`).join("");
   const active = hover != null ? points[hover] : null;
-  const summary = `Расход по заправкам: ${points.map((p) => `${fmtDate(p.date)} ${fmtConsumption(p.value)}`).join(", ")}`;
+  const summary = t.charts.consumptionAria(raw.map((p) => `${fmtDate(p.date)} ${fmtConsumption(p.value)}`).join(", "));
 
   return (
     <div ref={ref} className="chart" onPointerLeave={() => setHover(null)}>
       {width > 0 && (
         <svg width={width} height={height} role="img" aria-label={summary}>
-          {tickValues.map((t) => (
-            <g key={t}>
-              <line x1={m.left} x2={width - m.right} y1={y(t)} y2={y(t)} className="axis-grid-solid" />
-              <text x={m.left - 8} y={y(t) + 4} textAnchor="end" className="axis-label">
-                {Number.isInteger(t) ? t : t.toFixed(1).replace(".", ",")}
+          {tickValues.map((tick) => (
+            <g key={tick}>
+              <line x1={m.left} x2={width - m.right} y1={y(tick)} y2={y(tick)} className="axis-grid-solid" />
+              <text x={m.left - 8} y={y(tick) + 4} textAnchor="end" className="axis-label">
+                {decimal(tick, 1)}
               </text>
             </g>
           ))}
@@ -239,7 +258,7 @@ export function ConsumptionChart({ points, avg, height = 220 }: { points: FuelPo
             {active.station ? ` · ${active.station}` : ""}
           </strong>
           <span>
-            {fmtDec1(active.value)}&nbsp;л/100 км · {fmtKm(active.odo)}
+            {fmtDec1(active.value)}&nbsp;{messages().units.per100Long[prefs().unit]} · {fmtDist(active.odo)}
           </span>
         </Tooltip>
       )}

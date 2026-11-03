@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useT } from "../lib/store";
 import { CloseIcon } from "./icons";
 
 const FOCUSABLE =
@@ -15,6 +16,7 @@ type Props = {
 };
 
 export function Modal({ title, onClose, children, alert }: Props) {
+  const t = useT();
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -75,7 +77,7 @@ export function Modal({ title, onClose, children, alert }: Props) {
           <h2 id={titleId} className="modal-title">
             {title}
           </h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={t.common.close}>
             <CloseIcon />
           </button>
         </header>

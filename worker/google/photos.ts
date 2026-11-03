@@ -4,12 +4,13 @@ import type { PhotoResponse } from "../../shared/types";
 import { randomToken } from "../crypto";
 import { photoFromRow, type PhotoRow } from "../data";
 import { limitApi } from "../guard";
+import { requestLang } from "../messages";
 import { requireUser } from "../session";
 import { ApiError, type AppEnv } from "../types";
 import { DRIVE_URL, ensureFolders, getConnection, requireDrive } from "./connection";
 
 const UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
-const TOO_BIG = "Файл слишком большой: максимум 25 МБ.";
+const TOO_BIG = "fileTooBig";
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -74,32 +75,35 @@ photos.post("/", async (c) => {
   const width = Number(form.get("width")) || null;
   const height = Number(form.get("height")) || null;
 
-  if (!(file instanceof File) || !SAFE_ID.test(id) || !carId) throw new ApiError(400, "Некорректные данные.");
-  if (recordId !== null && !SAFE_ID.test(recordId)) throw new ApiError(400, "Некорректные данные.");
+  if (!(file instanceof File) || !SAFE_ID.test(id) || !carId) throw new ApiError(400, "badData");
+  if (recordId !== null && !SAFE_ID.test(recordId)) throw new ApiError(400, "badData");
   if (file.size > LIMITS.uploadBytes) throw new ApiError(413, TOO_BIG);
   if (!(IMAGE_TYPES as readonly string[]).includes(file.type)) {
-    throw new ApiError(415, "Можно загружать только фото: JPG, PNG, WebP, GIF или HEIC.");
+    throw new ApiError(415, "onlyImages");
   }
   const head = new Uint8Array(await file.slice(0, 16).arrayBuffer());
-  if (!looksLikeImage(head, file.type)) throw new ApiError(415, "Файл не похож на изображение.");
+  if (!looksLikeImage(head, file.type)) throw new ApiError(415, "notImage");
 
   const db = c.env.DB;
   const owned = await db.prepare("SELECT 1 FROM cars WHERE user_id = ? AND id = ?").bind(user.id, carId).first();
-  if (!owned) throw new ApiError(404, "Машина не найдена.");
-  if (user.photos_count >= LIMITS.photos) throw new ApiError(413, "Достигнут лимит фото на аккаунт.");
+  if (!owned) throw new ApiError(404, "carNotFound");
+  if (user.photos_count >= LIMITS.photos) throw new ApiError(413, "photoQuota");
 
   const { conn, token } = await requireDrive(c.env, user.id);
   const folderFor = (f: { gallery: string; shots: string }) => (kind === "record" ? f.shots : f.gallery);
 
+  const lang = requestLang(c);
   const known = kind === "record" ? conn.shots_folder_id : conn.gallery_folder_id;
-  let res = await uploadFile(token, file, known ?? folderFor(await ensureFolders(c.env, conn, token)));
+  // Інша мова або старі назви папок: ensureFolders їх перейменує.
+  const ready = known && conn.folders_lang === lang ? known : null;
+  let res = await uploadFile(token, file, ready ?? folderFor(await ensureFolders(c.env, conn, token, lang)));
   if (res.status === 404) {
     // Папку видалили на Диску: відновлюємо і повторюємо один раз.
-    res = await uploadFile(token, file, folderFor(await ensureFolders(c.env, conn, token)));
+    res = await uploadFile(token, file, folderFor(await ensureFolders(c.env, conn, token, lang)));
   }
   if (!res.ok) {
-    if (res.status === 403) throw new ApiError(502, "Google Диск отказал: возможно, на нём закончилось место.");
-    throw new ApiError(502, "Не получилось загрузить файл на Google Диск.");
+    if (res.status === 403) throw new ApiError(502, "driveFull");
+    throw new ApiError(502, "uploadFailed");
   }
   const created = await res.json<{ id: string; name: string; size?: string }>();
 
@@ -131,7 +135,7 @@ photos.get("/:id/:size{thumb|full}", async (c) => {
   const row = await c.env.DB.prepare("SELECT drive_id, mime FROM photos WHERE user_id = ? AND id = ?")
     .bind(user.id, c.req.param("id"))
     .first<{ drive_id: string; mime: string }>();
-  if (!row) throw new ApiError(404, "Фото не найдено.");
+  if (!row) throw new ApiError(404, "photoNotFound");
 
   const { token } = await requireDrive(c.env, user.id);
   const auth = { Authorization: `Bearer ${token}` };
@@ -151,7 +155,7 @@ photos.get("/:id/:size{thumb|full}", async (c) => {
   }
 
   const res = await fetch(`${fileUrl}?alt=media`, { headers: auth });
-  if (!res.ok) throw new ApiError(404, "Файла больше нет на Google Диске.", "photo_missing");
+  if (!res.ok) throw new ApiError(404, "photoMissing", "photo_missing");
   return new Response(res.body, { headers: imageHeaders(row.mime) });
 });
 

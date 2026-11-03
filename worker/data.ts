@@ -3,7 +3,7 @@ import { LIMITS } from "../shared/constants";
 import { nameKey } from "../shared/format";
 import { retargetOp } from "../shared/ops";
 import { opsRequestSchema } from "../shared/schema";
-import type { Car, FuelRecord, GarageData, Op, OpsResponse, Photo, Reminder, ServiceRecord } from "../shared/types";
+import type { Car, FuelRecord, GarageData, Op, OpsResponse, Photo, Reminder, ServiceRecord, Wish } from "../shared/types";
 import { limitApi, readJson } from "./guard";
 import { requireUser } from "./session";
 import { ApiError, type AppEnv, type SessionUser } from "./types";
@@ -19,6 +19,10 @@ type FuelRow = {
 type ReminderRow = {
   id: string; car_id: string; title: string; due_odo: number | null; due_date: string | null;
   done: number; done_date: string | null; notified: Reminder["notified"]; record_id: string | null;
+};
+type WishRow = {
+  id: string; car_id: string; title: string; price: number | null; links: string; note: string; added: string;
+  done: number; done_date: string | null; record_id: string | null;
 };
 export type PhotoRow = {
   id: string; car_id: string; kind: string; record_id: string | null; drive_id: string; name: string;
@@ -41,11 +45,12 @@ export const photoFromRow = (r: PhotoRow): Photo => ({
 
 /** Усі дані користувача. Кожен запит обмежено його user_id. */
 export async function loadGarage(db: D1Database, userId: string, demo: number): Promise<GarageData> {
-  const [cars, service, fuel, reminders, photos] = await db.batch([
+  const [cars, service, fuel, reminders, wishes, photos] = await db.batch([
     db.prepare("SELECT id, name FROM cars WHERE user_id = ? ORDER BY position, id").bind(userId),
     db.prepare("SELECT * FROM service_records WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM fuel_records WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM reminders WHERE user_id = ?").bind(userId),
+    db.prepare("SELECT * FROM wishes WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM photos WHERE user_id = ?").bind(userId),
   ]);
   return {
@@ -88,6 +93,20 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
         done: r.done === 1,
         doneDate: r.done_date,
         notified: r.notified,
+        recordId: r.record_id,
+      }),
+    ),
+    wishes: (wishes.results as WishRow[]).map(
+      (r): Wish => ({
+        id: r.id,
+        car: r.car_id,
+        title: r.title,
+        price: r.price,
+        links: JSON.parse(r.links),
+        note: r.note,
+        added: r.added,
+        done: r.done === 1,
+        doneDate: r.done_date,
         recordId: r.record_id,
       }),
     ),
@@ -139,6 +158,8 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
       return [
         db.prepare("DELETE FROM service_records WHERE user_id = ? AND id = ?").bind(userId, op.id),
         db.prepare("DELETE FROM photos WHERE user_id = ? AND record_id = ?").bind(userId, op.id),
+        // Хотілка більше не посилається на видалений запис витрат.
+        db.prepare("UPDATE wishes SET record_id = NULL WHERE user_id = ? AND record_id = ?").bind(userId, op.id),
       ];
     case "fuel.put": {
       const r = op.data;
@@ -177,6 +198,35 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
     }
     case "reminder.del":
       return [db.prepare("DELETE FROM reminders WHERE user_id = ? AND id = ?").bind(userId, op.id)];
+    case "wish.put": {
+      const w = op.data;
+      return [
+        db
+          .prepare(
+            `INSERT INTO wishes (user_id, id, car_id, title, price, links, note, added, done, done_date, record_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (user_id, id) DO UPDATE SET
+               car_id = excluded.car_id, title = excluded.title, price = excluded.price, links = excluded.links,
+               note = excluded.note, added = excluded.added, done = excluded.done, done_date = excluded.done_date,
+               record_id = excluded.record_id`,
+          )
+          .bind(
+            userId,
+            w.id,
+            w.car,
+            w.title,
+            w.price,
+            JSON.stringify(w.links),
+            w.note,
+            w.added,
+            w.done ? 1 : 0,
+            w.doneDate,
+            w.recordId,
+          ),
+      ];
+    }
+    case "wish.del":
+      return [db.prepare("DELETE FROM wishes WHERE user_id = ? AND id = ?").bind(userId, op.id)];
     case "demo.set":
       return [db.prepare("UPDATE users SET demo = ? WHERE id = ?").bind(op.value ? 1 : 0, userId)];
     case "all.del":
@@ -189,21 +239,23 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
 
 /** Межі на користувача: база має рости повільно, навіть якщо хтось напише скрипт. */
 function checkQuota(user: SessionUser, ops: Op[]): void {
-  const adds = { car: 0, service: 0, fuel: 0, reminder: 0 };
+  const adds = { car: 0, service: 0, fuel: 0, reminder: 0, wish: 0 };
   for (const op of ops) {
     if (op.type === "car.put") adds.car++;
     if (op.type === "service.put") adds.service++;
     if (op.type === "fuel.put") adds.fuel++;
     if (op.type === "reminder.put") adds.reminder++;
+    if (op.type === "wish.put") adds.wish++;
   }
   // Запас на один запит: оновлення наявних записів теж рахуються як додавання.
   if (
     (adds.car && user.cars_count + adds.car > LIMITS.cars + LIMITS.opsPerRequest) ||
     (adds.service && user.service_count + adds.service > LIMITS.service + LIMITS.opsPerRequest) ||
     (adds.fuel && user.fuel_count + adds.fuel > LIMITS.fuel + LIMITS.opsPerRequest) ||
-    (adds.reminder && user.reminders_count + adds.reminder > LIMITS.reminders + LIMITS.opsPerRequest)
+    (adds.reminder && user.reminders_count + adds.reminder > LIMITS.reminders + LIMITS.opsPerRequest) ||
+    (adds.wish && user.wishes_count + adds.wish > LIMITS.wishes + LIMITS.opsPerRequest)
   ) {
-    throw new ApiError(413, "Достигнут лимит записей на аккаунт.");
+    throw new ApiError(413, "quota");
   }
 }
 
@@ -256,7 +308,7 @@ async function mergeDuplicateCars(
 }
 
 const isConstraintError = (err: unknown): boolean => /constraint/i.test(String(err));
-const DB_DOWN = "База временно недоступна. Попробуй позже.";
+const DB_DOWN = "dbDown";
 
 export const data = new Hono<AppEnv>();
 

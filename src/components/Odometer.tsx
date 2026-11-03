@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { fmtNum } from "../../shared/format";
+import { fmtUnits, unitLabel } from "../../shared/format";
+import { fromKm } from "../../shared/prefs";
+import { useT } from "../lib/store";
 
 const DIGITS = "0123456789".split("");
 
@@ -23,7 +25,10 @@ const Reel = ({ digit, dim, position }: { digit: number; dim: boolean; position:
   </span>
 );
 
-export function Odometer({ value, decorative }: { value: number | null; decorative?: boolean }) {
+/** Пробіг приходить у кілометрах, як у базі; барабани показують його у вибраних одиницях. */
+export function Odometer({ value: km, decorative }: { value: number | null; decorative?: boolean }) {
+  const t = useT();
+  const value = km == null ? null : fromKm(km);
   // Перший кадр на нулях, далі показ: так барабани прокручуються при відкритті.
   const [shown, setShown] = useState<number | null>(value == null ? null : 0);
   useEffect(() => {
@@ -31,7 +36,7 @@ export function Odometer({ value, decorative }: { value: number | null; decorati
     return () => cancelAnimationFrame(frame);
   }, [value]);
 
-  const label = value == null ? "Пробег пока не указан" : `Пробег ${fmtNum(value)} км`;
+  const label = value == null ? t.odometer.none : t.odometer.value(fmtUnits(value));
   const a11y = decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label };
   const className = "odometer";
 
@@ -45,7 +50,7 @@ export function Odometer({ value, decorative }: { value: number | null; decorati
             </span>
           ))}
         </span>
-        <span className="odometer-unit">км</span>
+        <span className="odometer-unit">{unitLabel()}</span>
       </div>
     );
   }
@@ -66,7 +71,7 @@ export function Odometer({ value, decorative }: { value: number | null; decorati
           />
         ))}
       </span>
-      <span className="odometer-unit">км</span>
+      <span className="odometer-unit">{unitLabel()}</span>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from "fflate";
+import type { DateFormat } from "../../shared/prefs";
 import { cellValue, type ColumnFormat, type Sheet } from "../../shared/sheet";
 
 const escapeXml = (value: string): string =>
@@ -25,9 +26,12 @@ const columnName = (index: number): string => {
 const STYLE: Record<ColumnFormat, number> = { text: 0, money: 1, int: 2, dec1: 3, date: 4, liters: 1 };
 const HEADER_STYLE = 5;
 
-const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+/** Формат дати в клітинках — той, що вибрано в налаштуваннях сайту. */
+const DATE_CODES: Record<DateFormat, string> = { dmy: "dd\\.mm\\.yyyy", mdy: "mm/dd/yyyy", ymd: "yyyy\\-mm\\-dd" };
+
+const styles = (dateFormat: DateFormat) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<numFmts count="2"><numFmt numFmtId="164" formatCode="0.0"/><numFmt numFmtId="165" formatCode="dd\\.mm\\.yyyy"/></numFmts>
+<numFmts count="2"><numFmt numFmtId="164" formatCode="0.0"/><numFmt numFmtId="165" formatCode="${DATE_CODES[dateFormat]}"/></numFmts>
 <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
 <fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
 <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
@@ -82,7 +86,7 @@ const sheetXml = (sheet: Sheet): string => {
 };
 
 /** Файл .xlsx без формул: відкривається в Excel і Google Таблицях з тими ж числами, що на сайті. */
-export function buildXlsx(sheets: Sheet[]): Uint8Array {
+export function buildXlsx(sheets: Sheet[], dateFormat: DateFormat = "dmy"): Uint8Array {
   const files: Record<string, Uint8Array> = {
     "[Content_Types].xml": strToU8(
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -112,7 +116,7 @@ export function buildXlsx(sheets: Sheet[]): Uint8Array {
         )
         .join("")}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
     ),
-    "xl/styles.xml": strToU8(STYLES),
+    "xl/styles.xml": strToU8(styles(dateFormat)),
   };
   sheets.forEach((sheet, i) => {
     files[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(sheetXml(sheet));

@@ -1,6 +1,8 @@
-# Garage Amedro
+# D.Garage
 
-A car logbook for repairs, purchases, fill-ups and maintenance reminders. It works out fuel consumption, total spend and cost per kilometre on its own. It runs on phones and desktops, with user accounts and its own database. The interface is in Russian.
+A car logbook for repairs, purchases, fill-ups, maintenance reminders and a wishlist of plans for the car. It works out fuel consumption, total spend and cost per kilometre on its own. It runs on phones and desktops, with user accounts and its own database.
+
+The interface is in English (the default), Ukrainian and Russian. Distances can be shown in kilometres or miles and dates as dd.mm.yyyy, mm/dd/yyyy or yyyy-mm-dd. These are per-device display settings: the database always stores kilometres.
 
 Live site: https://garage.dvoted.club
 
@@ -13,6 +15,7 @@ Live site: https://garage.dvoted.club
 
 ```
 shared/         calculations, number parsing, backup, reminders, spreadsheet, schemas
+shared/i18n/    interface texts in English, Ukrainian and Russian
 worker/         API: sign-in and data
 worker/google/  Google sign-in, Drive, Sheets and photos
 src/            user interface; src/lib/sync.ts is the record queue
@@ -37,7 +40,7 @@ npm run typecheck   # code, tests and configuration
 npm run cf-typegen  # after changing wrangler.jsonc
 ```
 
-Record types are derived from the schemas in `shared/schema.ts`, so a field changes in one place. To check the live site after a deploy, run `node scripts/live-check.mjs`.
+Record types are derived from the schemas in `shared/schema.ts`, so a field changes in one place. Interface texts live in `shared/i18n/`: `en.ts` defines the keys, and the other languages must have the same ones, which the type checker enforces. Server error messages are in `worker/messages.ts` and follow the `X-Lang` header the app sends. To check the live site after a deploy, run `node scripts/live-check.mjs`.
 
 ## Configuration
 

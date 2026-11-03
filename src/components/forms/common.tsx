@@ -3,7 +3,9 @@ import { genId, todayISO } from "../../../shared/format";
 import { buildReminder, reminderDraft } from "../../../shared/reminders";
 import type { Op, Reminder } from "../../../shared/types";
 import { uploadPhotos } from "../../lib/photos";
-import { closeDialog, currentOdo, dueReminderDialog, setActive, toast, useStore } from "../../lib/store";
+import { TrashIcon } from "../icons";
+import { messages } from "../../../shared/i18n";
+import { closeDialog, currentOdo, dueReminderDialog, setActive, toast, useStore, useT } from "../../lib/store";
 
 export const Field = ({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) => (
   <label className="field">
@@ -14,10 +16,11 @@ export const Field = ({ label, hint, children }: { label: string; hint?: ReactNo
 );
 
 export const CarSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => {
+  const t = useT();
   const cars = useStore((s) => s.data.cars);
   if (cars.length < 2) return null;
   return (
-    <Field label="Машина">
+    <Field label={t.serviceForm.car}>
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         {cars.map((c) => (
           <option key={c.id} value={c.id}>
@@ -74,16 +77,17 @@ export const finishSave = (car: string, isNew: boolean, files: File[], recordId:
   setActive(car);
   const next = dueReminderDialog(car, isNew);
   closeDialog(next);
-  if (!next) toast("Сохранено");
+  if (!next) toast(messages().common.saved);
   void uploadPhotos(files, { car, kind: "record", recordId });
 };
 
 const ConfirmDelete = ({ question, onDelete }: { question: string; onDelete: () => void }) => {
+  const t = useT();
   const [asking, setAsking] = useState(false);
   if (!asking) {
     return (
       <button type="button" className="btn btn-danger-quiet" onClick={() => setAsking(true)}>
-        Удалить
+        <TrashIcon size={16} /> {t.common.delete}
       </button>
     );
   }
@@ -91,7 +95,7 @@ const ConfirmDelete = ({ question, onDelete }: { question: string; onDelete: () 
     <span className="confirm-inline">
       <span>{question}</span>
       <button type="button" className="btn btn-danger" onClick={onDelete}>
-        Да, удалить
+        {t.common.yesDelete}
       </button>
     </span>
   );
@@ -100,29 +104,32 @@ const ConfirmDelete = ({ question, onDelete }: { question: string; onDelete: () 
 export const FormFooter = ({
   error,
   onDelete,
-  deleteQuestion = "Удалить запись?",
-  submitLabel = "Сохранить",
+  deleteQuestion,
+  submitLabel,
 }: {
   error: string;
   onDelete?: () => void;
   deleteQuestion?: string;
   submitLabel?: string;
-}) => (
-  <>
-    {error && (
-      <p className="form-error" role="alert">
-        {error}
-      </p>
-    )}
-    <div className="form-actions">
-      {onDelete && <ConfirmDelete question={deleteQuestion} onDelete={onDelete} />}
-      <span className="spacer" />
-      <button type="button" className="btn btn-quiet" onClick={() => closeDialog()}>
-        Отмена
-      </button>
-      <button type="submit" className="btn btn-ink">
-        {submitLabel}
-      </button>
-    </div>
-  </>
-);
+}) => {
+  const t = useT();
+  return (
+    <>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="form-actions">
+        {onDelete && <ConfirmDelete question={deleteQuestion ?? t.common.deleteRecordQ} onDelete={onDelete} />}
+        <span className="spacer" />
+        <button type="button" className="btn btn-quiet" onClick={() => closeDialog()}>
+          {t.common.cancel}
+        </button>
+        <button type="submit" className="btn btn-ink">
+          {submitLabel ?? t.common.save}
+        </button>
+      </div>
+    </>
+  );
+};

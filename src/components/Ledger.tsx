@@ -1,9 +1,9 @@
-import type { ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { fmtMoney0, fmtMonthKey } from "../../shared/format";
 import type { Photo } from "../../shared/types";
 import { photoUrl } from "../lib/photos";
-import { openDialog } from "../lib/store";
-import { PumpIcon, WrenchIcon } from "./icons";
+import { openDialog, useT } from "../lib/store";
+import { CheckIcon, PumpIcon, TrashIcon, WrenchIcon } from "./icons";
 import { Mono } from "./Mono";
 
 export const Summary = ({ title, children }: { title: string; children: ReactNode }) => (
@@ -30,7 +30,7 @@ export const KeyValue = ({
   </div>
 );
 
-export type MoneyBar = { name: string; sum: number; fuel?: boolean };
+export type MoneyBar = { key: string; name: string; sum: number; fuel?: boolean };
 
 /** Смужки «назва, сума, частка». Ширина рахується від найбільшої, частка — від `total`. */
 export const MoneyBars = ({ rows, total }: { rows: MoneyBar[]; total: number }) => {
@@ -38,7 +38,7 @@ export const MoneyBars = ({ rows, total }: { rows: MoneyBar[]; total: number }) 
   return (
     <ul className="bars">
       {rows.map((r) => (
-        <li key={r.name}>
+        <li key={r.key}>
           <div className="bars-head">
             <span>{r.name}</span>
             <span className="num">
@@ -97,6 +97,7 @@ export const MonthGroup = ({ monthKey, total, children }: { monthKey: string; to
 );
 
 const RecordPhotos = ({ photos }: { photos: Photo[] }) => {
+  const t = useT();
   if (!photos.length) return null;
   return (
     <div className="rec-photos">
@@ -105,7 +106,7 @@ const RecordPhotos = ({ photos }: { photos: Photo[] }) => {
           key={p.id}
           type="button"
           className="rec-photo"
-          aria-label={`Открыть фото ${p.name}`}
+          aria-label={t.gallery.openPhoto(p.name)}
           onClick={() => openDialog({ type: "lightbox", photos, index: i })}
         >
           <img src={photoUrl(p, "thumb")} alt="" loading="lazy" />
@@ -115,8 +116,12 @@ const RecordPhotos = ({ photos }: { photos: Photo[] }) => {
   );
 };
 
+/** Режим вибору: рядок стає галочкою, а не відкриває запис. */
+export type RowSelect = { checked: boolean; onToggle: (id: string) => void };
+
 /** Рядок журналу. Вміст під ним (розбивка затрат) передається через children. */
 export const LedgerRow = ({
+  id,
   kind,
   title,
   meta,
@@ -124,8 +129,11 @@ export const LedgerRow = ({
   badge,
   photos,
   onOpen,
+  select,
+  stale,
   children,
 }: {
+  id: string;
   kind: "service" | "fuel";
   title: string;
   meta: string;
@@ -133,11 +141,22 @@ export const LedgerRow = ({
   badge?: ReactNode;
   photos: Photo[];
   onOpen: () => void;
+  select?: RowSelect;
+  stale?: boolean;
   children?: ReactNode;
 }) => (
-  <article className="rec">
-    <button type="button" className="rec-main" onClick={onOpen}>
-      <span className={`rec-icon rec-icon-${kind}`}>{kind === "service" ? <WrenchIcon /> : <PumpIcon />}</span>
+  <article className={`rec${select?.checked ? " is-picked" : ""}${stale ? " is-stale" : ""}`}>
+    <button
+      type="button"
+      className="rec-main"
+      onClick={select ? () => select.onToggle(id) : onOpen}
+      {...(select ? { role: "checkbox", "aria-checked": select.checked } : {})}
+    >
+      {select ? (
+        <span className={`rec-icon rec-check${select.checked ? " is-on" : ""}`}>{select.checked && <CheckIcon />}</span>
+      ) : (
+        <span className={`rec-icon rec-icon-${kind}`}>{kind === "service" ? <WrenchIcon /> : <PumpIcon />}</span>
+      )}
       <span className="rec-body">
         <span className="rec-title">{title}</span>
         <span className="rec-meta">
@@ -153,3 +172,100 @@ export const LedgerRow = ({
     <RecordPhotos photos={photos} />
   </article>
 );
+
+/** Вибір кількох записів для видалення. Записи, що зникли зі списку, з вибору випадають самі. */
+export function useSelection(ids: string[]) {
+  const [on, setOn] = useState(false);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set());
+  const known = useMemo(() => new Set(ids), [ids]);
+  const selected = useMemo(() => [...picked].filter((id) => known.has(id)), [picked, known]);
+
+  const toggle = useCallback(
+    (id: string) =>
+      setPicked((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+    [],
+  );
+
+  return {
+    on,
+    selected,
+    isPicked: (id: string) => picked.has(id),
+    toggle,
+    start: () => setOn(true),
+    stop: () => {
+      setOn(false);
+      setPicked(new Set());
+    },
+    setAll: (all: boolean) => setPicked(all ? new Set(ids) : new Set()),
+    allPicked: selected.length === ids.length && ids.length > 0,
+  };
+}
+
+export type Selection = ReturnType<typeof useSelection>;
+
+/** Кнопка над списком: вмикає вибір записів. Під час вибору замість неї — підказка. */
+export function SelectToggle({ selection }: { selection: Selection }) {
+  const t = useT();
+  return (
+    <div className="list-tools">
+      {selection.on ? (
+        <p className="muted">{t.select.hint}</p>
+      ) : (
+        <button type="button" className="btn btn-quiet btn-small" onClick={selection.start}>
+          <TrashIcon size={16} /> {t.select.start}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Панель унизу під час вибору: скільки вибрано, «вибрати все», видалення з підтвердженням. */
+export function SelectBar({ selection, onDelete }: { selection: Selection; onDelete: (ids: string[]) => void }) {
+  const t = useT();
+  const [asking, setAsking] = useState(false);
+  if (!selection.on) return null;
+  const n = selection.selected.length;
+  return (
+    <div className="select-bar" role="region" aria-label={t.select.selected(n)}>
+      {asking && n > 0 ? (
+        <>
+          <span className="select-question">{t.select.confirm(n)}</span>
+          <span className="spacer" />
+          <button type="button" className="btn btn-quiet btn-small" onClick={() => setAsking(false)}>
+            {t.common.cancel}
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger btn-small"
+            onClick={() => {
+              onDelete(selection.selected);
+              setAsking(false);
+              selection.stop();
+            }}
+          >
+            {t.common.yesDelete}
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="select-count">{t.select.selected(n)}</span>
+          <button type="button" className="link-btn" onClick={() => selection.setAll(!selection.allPicked)}>
+            {selection.allPicked ? t.select.none : t.select.all}
+          </button>
+          <span className="spacer" />
+          <button type="button" className="btn btn-quiet btn-small" onClick={selection.stop}>
+            {t.common.cancel}
+          </button>
+          <button type="button" className="btn btn-danger btn-small" disabled={!n} onClick={() => setAsking(true)}>
+            {t.select.delete(n)}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}

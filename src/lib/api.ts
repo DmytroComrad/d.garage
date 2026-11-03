@@ -1,3 +1,6 @@
+import { messages } from "../../shared/i18n";
+import { prefs } from "../../shared/prefs";
+
 export class HttpError extends Error {
   constructor(
     public status: number,
@@ -12,21 +15,24 @@ export class HttpError extends Error {
 export class NetworkError extends Error {}
 
 export const errorText = (err: unknown): string =>
-  err instanceof HttpError ? err.message : "Нет связи с сервером. Проверь интернет и попробуй ещё раз.";
+  err instanceof HttpError ? err.message : messages().common.noConnection;
 
 const parse = async <T>(res: Response): Promise<T> => {
   const body = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
   if (!res.ok) {
-    throw new HttpError(res.status, body?.error ?? "Что-то пошло не так. Попробуй ещё раз.", body?.code);
+    throw new HttpError(res.status, body?.error ?? messages().common.somethingWrong, body?.code);
   }
   return body as T;
 };
 
+/** Мова інтерфейсу йде з кожним запитом: нею сервер пише помилки, листи й назви на Google Диску. */
 const request = async (path: string, init: RequestInit): Promise<Response> => {
+  const headers = new Headers(init.headers);
+  headers.set("X-Lang", prefs().lang);
   try {
-    return await fetch(path, { credentials: "same-origin", ...init });
+    return await fetch(path, { credentials: "same-origin", ...init, headers });
   } catch {
-    throw new NetworkError("Нет связи с сервером.");
+    throw new NetworkError(messages().common.noServer);
   }
 };
 

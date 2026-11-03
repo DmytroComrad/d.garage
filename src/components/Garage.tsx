@@ -1,28 +1,48 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { fmtConsumption, fmtDate, fmtKm, fmtMoney, fmtMoney0 } from "../../shared/format";
+import { fmtConsumption, fmtDate, fmtDist, fmtMoney0, fmtPerDist } from "../../shared/format";
 import { reminderText } from "../../shared/reminders";
-import { dispatch, loadDemo, markReminderDone, openDialog, setActive, setTab, toast, useCarView, useStore, type Tab } from "../lib/store";
+import {
+  dispatch,
+  loadDemo,
+  markReminderDone,
+  openDialog,
+  setActive,
+  setTab,
+  toast,
+  useCarView,
+  useStore,
+  useT,
+  type Tab,
+} from "../lib/store";
 import { DataTab } from "./DataTab";
 import { FuelTab } from "./FuelTab";
 import { GalleryTab } from "./GalleryTab";
 import { LampIcon, PersonIcon } from "./icons";
+import { LangMenu } from "./LangMenu";
 import { Mono } from "./Mono";
 import { Odometer } from "./Odometer";
 import { RemindersTab } from "./RemindersTab";
 import { ServiceTab } from "./ServiceTab";
 import { StatsTab } from "./StatsTab";
+import { WishesTab } from "./WishesTab";
+
+/** Назва проєкту: «D.» підсвічено, як колись друге слово. */
+export const Brand = ({ large }: { large?: boolean }) => (
+  <div className={`brand${large ? " brand-large" : ""}`} aria-label="D.Garage">
+    <span className="brand-accent">D.</span>Garage
+  </div>
+);
 
 function TopBar() {
+  const t = useT();
   const cars = useStore((s) => s.data.cars);
   const active = useStore((s) => s.active);
   const user = useStore((s) => s.user);
   return (
     <header className="topbar">
       <div className="topbar-inner">
-        <div className="brand" aria-label="Гараж Амедро">
-          <span>Гараж</span> <span className="brand-accent">Амедро</span>
-        </div>
-        <nav className="car-chips" aria-label="Машины">
+        <Brand />
+        <nav className="car-chips" aria-label={t.topbar.cars}>
           {cars.map((c) => (
             <button
               key={c.id}
@@ -35,13 +55,14 @@ function TopBar() {
             </button>
           ))}
           <button type="button" className="car-chip car-chip-add" onClick={() => openDialog({ type: "car" })}>
-            + машина
+            {t.topbar.addCar}
           </button>
         </nav>
+        <LangMenu />
         <button
           type="button"
           className="icon-btn account-btn"
-          aria-label={`Профиль: ${user?.name || user?.email}`}
+          aria-label={t.topbar.profile(user?.name || user?.email || "")}
           onClick={() => openDialog({ type: "account" })}
         >
           <PersonIcon />
@@ -52,6 +73,7 @@ function TopBar() {
 }
 
 function Banners() {
+  const t = useT();
   const demo = useStore((s) => s.data.demo);
   const offline = useStore((s) => s.offline);
   const pending = useStore((s) => s.queue.length);
@@ -61,7 +83,7 @@ function Banners() {
       {demo && (
         <div className="banner">
           <p>
-            <strong>Это пример гаража.</strong> Если хочешь, оставь эти записи. Если нет, начни с чистого гаража.
+            <strong>{t.banners.demoStrong}</strong> {t.banners.demoText}
           </p>
           <div className="banner-actions">
             <button
@@ -69,10 +91,10 @@ function Banners() {
               className="btn btn-ink btn-small"
               onClick={() => {
                 dispatch({ type: "demo.set", value: false });
-                toast("Записи сохранены за тобой");
+                toast(t.banners.kept);
               }}
             >
-              Оставить
+              {t.banners.keep}
             </button>
             <button
               type="button"
@@ -82,7 +104,7 @@ function Banners() {
                 openDialog({ type: "car" });
               }}
             >
-              Начать с нуля
+              {t.banners.startOver}
             </button>
           </div>
         </div>
@@ -90,18 +112,14 @@ function Banners() {
       {offline && (
         <div className="banner banner-quiet" role="status">
           <p>
-            <strong>Нет связи с сервером.</strong>{" "}
-            {pending
-              ? `Несохранённых изменений: ${pending}. Отправятся сами, когда появится интернет.`
-              : "Показаны последние сохранённые данные."}
+            <strong>{t.banners.offlineStrong}</strong> {pending ? t.banners.offlinePending(pending) : t.banners.offlineCached}
           </p>
         </div>
       )}
       {!storageOk && (
         <div className="banner banner-bad" role="alert">
           <p>
-            <strong>Браузер не даёт сохранять данные.</strong> Пока нет интернета, изменения пропадут после закрытия
-            страницы. Скачай бэкап на вкладке «Данные».
+            <strong>{t.banners.storageStrong}</strong> {t.banners.storageText}
           </p>
         </div>
       )}
@@ -110,19 +128,20 @@ function Banners() {
 }
 
 function EmptyGarage() {
+  const t = useT();
   return (
     <section className="empty-garage">
-      <h1 className="display">Гараж пуст</h1>
-      <p>Добавь машину — и веди ремонты, покупки и заправки. Расход, вложения и цена километра посчитаются сами.</p>
+      <h1 className="display">{t.empty.title}</h1>
+      <p>{t.empty.text}</p>
       <div className="empty-actions">
         <button type="button" className="btn btn-ink" onClick={() => openDialog({ type: "car" })}>
-          Добавить машину
+          {t.empty.addCar}
         </button>
         <button type="button" className="btn btn-quiet" onClick={() => setTab("data")}>
-          Восстановить из бэкапа
+          {t.empty.restore}
         </button>
         <button type="button" className="btn btn-quiet" onClick={loadDemo}>
-          Посмотреть на примере
+          {t.empty.demo}
         </button>
       </div>
     </section>
@@ -130,11 +149,12 @@ function EmptyGarage() {
 }
 
 function ReminderStrip({ carId }: { carId: string }) {
+  const t = useT();
   const { urgentReminders: rows } = useCarView(carId);
   if (!rows.length) return null;
   const shown = rows.slice(0, 3);
   return (
-    <section className="lamps" aria-label="Скоро обслуживание">
+    <section className="lamps" aria-label={t.strip.aria}>
       {shown.map(({ reminder, status }) => (
         <div key={reminder.id} className={`lamp lamp-${status.level}`}>
           <span className="lamp-icon">
@@ -144,13 +164,13 @@ function ReminderStrip({ carId }: { carId: string }) {
             <Mono text={reminderText(status, reminder.title)} />
           </button>
           <button type="button" className="btn btn-small btn-quiet" onClick={() => markReminderDone(reminder)}>
-            Сделано
+            {t.reminders.done}
           </button>
         </div>
       ))}
       {rows.length > shown.length && (
         <button type="button" className="link-btn" onClick={() => setTab("reminders")}>
-          Все напоминания: {rows.length}
+          {t.strip.all(rows.length)}
         </button>
       )}
     </section>
@@ -158,6 +178,8 @@ function ReminderStrip({ carId }: { carId: string }) {
 }
 
 function Hero({ carId, actionsRef }: { carId: string; actionsRef: RefObject<HTMLDivElement | null> }) {
+  const t = useT();
+  const unit = useStore((s) => s.prefs.unit);
   const name = useStore((s) => s.data.cars.find((c) => c.id === carId)?.name);
   const { summary: s, fuelTotals: f } = useCarView(carId);
 
@@ -167,39 +189,39 @@ function Hero({ carId, actionsRef }: { carId: string; actionsRef: RefObject<HTML
         <div className="hero-title">
           <h1 className="display">{name}</h1>
           <p className="hero-sub">
-            <Mono text={s.hasRecords ? `Учёт с ${fmtDate(s.since)} · проехано ${fmtKm(s.driven)}` : "Пока нет записей"} />
+            <Mono text={s.hasRecords ? t.hero.since(fmtDate(s.since), fmtDist(s.driven)) : t.hero.noRecords} />
           </p>
         </div>
         <Odometer value={s.currentOdo} />
       </div>
       <div ref={actionsRef} className="hero-actions">
         <button type="button" className="btn btn-fuel" onClick={() => openDialog({ type: "fuel", car: carId })}>
-          + Заправка
+          {t.hero.addFuel}
         </button>
         <button type="button" className="btn btn-service" onClick={() => openDialog({ type: "service", car: carId })}>
-          + Сервис
+          {t.hero.addService}
         </button>
       </div>
       <dl className="gauges">
         <div className="gauge gauge-main">
-          <dt>Вложено всего</dt>
+          <dt>{t.hero.total}</dt>
           <dd>{fmtMoney0(s.total)}</dd>
         </div>
         <div className="gauge">
-          <dt>Сервис и покупки</dt>
+          <dt>{t.hero.service}</dt>
           <dd>{fmtMoney0(s.serviceTotal)}</dd>
         </div>
         <div className="gauge">
-          <dt>Топливо</dt>
+          <dt>{t.hero.fuel}</dt>
           <dd>{fmtMoney0(s.fuelTotal)}</dd>
         </div>
         <div className="gauge">
-          <dt>Средний расход</dt>
+          <dt>{t.hero.avgConsumption}</dt>
           <dd>{fmtConsumption(f.avg)}</dd>
         </div>
         <div className="gauge">
-          <dt>1 км обходится</dt>
-          <dd>{fmtMoney(s.perKm)}</dd>
+          <dt>{t.hero.perDist[unit]}</dt>
+          <dd>{fmtPerDist(s.perKm)}</dd>
         </div>
       </dl>
     </section>
@@ -207,16 +229,18 @@ function Hero({ carId, actionsRef }: { carId: string; actionsRef: RefObject<HTML
 }
 
 function Tabs({ carId }: { carId: string }) {
+  const t = useT();
   const tab = useStore((s) => s.tab);
-  const { urgentReminders } = useCarView(carId);
+  const { urgentReminders, staleRecords } = useCarView(carId);
 
   const items: { id: Tab; label: string; badge?: number }[] = [
-    { id: "service", label: "Обслуживание" },
-    { id: "fuel", label: "Заправки" },
-    { id: "reminders", label: "Напоминания", badge: urgentReminders.length },
-    { id: "gallery", label: "Галерея" },
-    { id: "stats", label: "Статистика" },
-    { id: "data", label: "Данные" },
+    { id: "service", label: t.tabs.service, badge: staleRecords.size },
+    { id: "fuel", label: t.tabs.fuel },
+    { id: "reminders", label: t.tabs.reminders, badge: urgentReminders.length },
+    { id: "wishes", label: t.tabs.wishes },
+    { id: "gallery", label: t.tabs.gallery },
+    { id: "stats", label: t.tabs.stats },
+    { id: "data", label: t.tabs.data },
   ];
 
   // На телефоні вкладки гортаються: вибрана не має лишатися за краєм.
@@ -234,7 +258,7 @@ function Tabs({ carId }: { carId: string }) {
 
   return (
     <div className="tabs-wrap">
-      <div className="tabs" role="tablist" aria-label="Разделы" onKeyDown={onKey}>
+      <div className="tabs" role="tablist" aria-label={t.tabs.aria} onKeyDown={onKey}>
         {items.map((item) => (
           <button
             key={item.id}
@@ -258,6 +282,7 @@ function Tabs({ carId }: { carId: string }) {
 
 /** На телефоні кнопки додавання завжди під рукою, навіть коли hero вже за межами екрана. */
 function QuickBar({ carId, actionsRef }: { carId: string; actionsRef: RefObject<HTMLDivElement | null> }) {
+  const t = useT();
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const node = actionsRef.current;
@@ -275,7 +300,7 @@ function QuickBar({ carId, actionsRef }: { carId: string; actionsRef: RefObject<
         tabIndex={visible ? 0 : -1}
         onClick={() => openDialog({ type: "fuel", car: carId })}
       >
-        + Заправка
+        {t.hero.addFuel}
       </button>
       <button
         type="button"
@@ -283,7 +308,7 @@ function QuickBar({ carId, actionsRef }: { carId: string; actionsRef: RefObject<
         tabIndex={visible ? 0 : -1}
         onClick={() => openDialog({ type: "service", car: carId })}
       >
-        + Сервис
+        {t.hero.addService}
       </button>
     </div>
   );
@@ -313,6 +338,7 @@ export function Garage() {
               {tab === "service" && <ServiceTab carId={carId} />}
               {tab === "fuel" && <FuelTab carId={carId} />}
               {tab === "reminders" && <RemindersTab carId={carId} />}
+              {tab === "wishes" && <WishesTab carId={carId} />}
               {tab === "gallery" && <GalleryTab carId={carId} />}
               {tab === "stats" && <StatsTab carId={carId} />}
               {tab === "data" && <DataTab />}

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { carSummary, fuelCalcs, fuelChipTone, fuelSummary, itemKindTotals, monthly, niceStep, sumMoney } from "../../shared/calc";
-import { fmtConsumption, fmtDate, fmtKm, fmtMoney, fmtMoney0, plural } from "../../shared/format";
+import { fmtConsumption, fmtDate, fmtDist, fmtMoney, fmtMoney0 } from "../../shared/format";
+import { plural3 as plural } from "../../shared/i18n/plural";
+import { DEFAULT_PREFS, applyPrefs } from "../../shared/prefs";
 import type { ServiceRecord } from "../../shared/types";
 import { CAR, fuel, partial, service } from "./fixtures";
+
+// Очікування нижче записані російською, як інтерфейс до появи інших мов.
+applyPrefs({ ...DEFAULT_PREFS, lang: "ru" });
 
 const norm = (s: string) => s.replace(/ /g, " ");
 const today = "2026-09-15";
@@ -33,7 +38,7 @@ describe("критерії приймання: демо-дані", () => {
   });
 
   it("пробіг 328 030, облік з 17.08.2026, проїхано 570 км, 1 км = 47,53 ₴", () => {
-    expect(norm(fmtKm(cs.currentOdo))).toBe("328 030 км");
+    expect(norm(fmtDist(cs.currentOdo))).toBe("328 030 км");
     expect(fmtDate(cs.since)).toBe("17.08.2026");
     expect(cs.driven).toBe(570);
     expect(cs.perKm?.toFixed(2)).toBe("47.53");

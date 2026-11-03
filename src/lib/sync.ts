@@ -1,4 +1,5 @@
 import { LIMITS } from "../../shared/constants";
+import { messages } from "../../shared/i18n";
 import { retargetOp } from "../../shared/ops";
 import type { Op, OpsResponse } from "../../shared/types";
 import { HttpError } from "./api";
@@ -35,7 +36,7 @@ export async function drainQueue(io: DrainIO): Promise<DrainResult> {
       const aliases = new Map(Object.entries(remapped ?? {}));
       if (rejected.length) {
         stale = true;
-        io.notify("Часть изменений не сохранилась: проверь записи.");
+        io.notify(messages().session.syncPartial);
       }
       if (aliases.size) stale = true;
       // Операції могли додатись, поки йшов запит: прибираємо лише відправлені.

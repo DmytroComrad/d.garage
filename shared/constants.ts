@@ -1,24 +1,33 @@
+import { messages, type Messages } from "./i18n";
 import type { ItemKind } from "./types";
 
+/**
+ * Категорії зберігаються в записах саме цими рядками: так було з першої версії, і бекапи їх містять.
+ * Показуємо переклад за ключем, а невідому категорію (з чужого бекапу) — як є.
+ */
 export const CATEGORIES = [
-  "Ремонт",
-  "ТО / расходники",
-  "Шины / диски",
-  "Запчасти / покупки",
-  "Мойка / уход",
-  "Документы / страховка",
-  "Тюнинг",
-  "Другое",
+  { id: "Ремонт", key: "repair" },
+  { id: "ТО / расходники", key: "maintenance" },
+  { id: "Шины / диски", key: "tires" },
+  { id: "Запчасти / покупки", key: "parts" },
+  { id: "Мойка / уход", key: "care" },
+  { id: "Документы / страховка", key: "documents" },
+  { id: "Тюнинг", key: "tuning" },
+  { id: "Другое", key: "other" },
 ] as const;
 
-export const ITEM_KINDS: { value: ItemKind; label: string; placeholder: string }[] = [
-  { value: "parts", label: "Запчасти", placeholder: "Например: масло 5W-30" },
-  { value: "labor", label: "Работа", placeholder: "Например: замена масла" },
-  { value: "extra", label: "Другое", placeholder: "Например: расходники" },
-];
+export const DEFAULT_CATEGORY = "Ремонт";
+export const OTHER_CATEGORY = "Другое";
+export const WISH_CATEGORY = "Запчасти / покупки";
 
-export const itemKindLabel = (kind: ItemKind): string =>
-  ITEM_KINDS.find((k) => k.value === kind)?.label ?? "Другое";
+export const categoryLabel = (cat: string, m: Messages = messages()): string => {
+  const known = CATEGORIES.find((c) => c.id === cat);
+  return known ? m.categories[known.key] : cat;
+};
+
+export const ITEM_KINDS: ItemKind[] = ["parts", "labor", "extra"];
+
+export const itemKindLabel = (kind: ItemKind, m: Messages = messages()): string => m.itemKinds[kind].label;
 
 /** Єдине джерело меж: їх використовують схеми сервера, імпорт і форми. */
 export const LIMITS = {
@@ -26,6 +35,7 @@ export const LIMITS = {
   service: 10000,
   fuel: 10000,
   reminders: 2000,
+  wishes: 2000,
   photos: 5000,
   itemsPerRecord: 60,
   whatLength: 1000,
@@ -35,6 +45,8 @@ export const LIMITS = {
   carNameLength: 80,
   personNameLength: 80,
   titleLength: 200,
+  linksPerWish: 10,
+  urlLength: 2000,
   categoryLength: 80,
   maxOdo: 100_000_000,
   maxLiters: 100_000,
@@ -46,4 +58,6 @@ export const LIMITS = {
 
 export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"] as const;
 
-export const BACKUP_APP = "garage-amedro";
+export const BACKUP_APP = "d-garage";
+/** Так бекапи підписувались до перейменування: їх теж приймаємо. */
+export const LEGACY_BACKUP_APPS = ["garage-amedro"] as const;

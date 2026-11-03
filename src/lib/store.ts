@@ -2,7 +2,9 @@ import { useSyncExternalStore } from "react";
 import { mergeBackup, type RawBackup } from "../../shared/backup";
 import { demoRecords } from "../../shared/demo";
 import { genId, todayISO } from "../../shared/format";
+import { MESSAGES, messages, type Messages } from "../../shared/i18n";
 import { applyOp, emptyData } from "../../shared/ops";
+import { applyPrefs, readPrefs, type Prefs } from "../../shared/prefs";
 import { remindersToNotify, type RemindersRow } from "../../shared/reminders";
 import type {
   AppConfig,
@@ -16,20 +18,26 @@ import type {
   ServiceRecord,
   StateResponse,
   User,
+  Wish,
 } from "../../shared/types";
 import { HttpError, NetworkError, getIfChanged, getJson, postJson } from "./api";
 import { createCache } from "./cache";
 import { drainQueue, reconcileQueue } from "./sync";
 import { carView, type CarView } from "./view";
 
-export type Tab = "service" | "fuel" | "reminders" | "gallery" | "stats" | "data";
+export type Tab = "service" | "fuel" | "reminders" | "wishes" | "gallery" | "stats" | "data";
 export type Theme = "auto" | "light" | "dark";
+
+/** Що підставити в нову сервісну форму: так хотілка стає записом витрат. */
+export type ServiceDraft = { what: string; sum: number | null; note: string };
 
 export type Dialog =
   | { type: "fuel"; record?: FuelRecord; car?: string }
-  | { type: "service"; record?: ServiceRecord; car?: string }
+  | { type: "service"; record?: ServiceRecord; car?: string; draft?: ServiceDraft; wishId?: string }
   | { type: "car" }
   | { type: "reminder"; reminder?: Reminder }
+  | { type: "wish"; wish?: Wish }
+  | { type: "wishDone"; wish: Wish }
   | { type: "notify"; rows: RemindersRow[] }
   | { type: "account" }
   | { type: "copy"; text: string }
@@ -47,6 +55,9 @@ export type AppState = {
   active: string | null;
   tab: Tab;
   theme: Theme;
+  prefs: Prefs;
+  /** Пояснення, як працюють нагадування, вже прочитали на цьому пристрої. */
+  reminderNoteSeen: boolean;
   queue: Op[];
   offline: boolean;
   storageOk: boolean;
@@ -56,11 +67,21 @@ export type AppState = {
 };
 
 const UI_KEY = "garage-ui";
-const TABS: Tab[] = ["service", "fuel", "reminders", "gallery", "stats", "data"];
+const TABS: Tab[] = ["service", "fuel", "reminders", "wishes", "gallery", "stats", "data"];
 
 const noDrive: DriveStatus = { connected: false, email: null, sheetUrl: null, sheetExportedAt: null };
 
-const readUi = (): { tab?: Tab; active?: string; theme?: Theme } => {
+type StoredUi = {
+  tab?: Tab;
+  active?: string;
+  theme?: Theme;
+  lang?: unknown;
+  unit?: unknown;
+  dateFormat?: unknown;
+  reminderNoteSeen?: boolean;
+};
+
+const readUi = (): StoredUi => {
   try {
     return JSON.parse(localStorage.getItem(UI_KEY) ?? "{}");
   } catch {
@@ -69,6 +90,9 @@ const readUi = (): { tab?: Tab; active?: string; theme?: Theme } => {
 };
 
 const ui = readUi();
+const initialPrefs = readPrefs(ui);
+// Форматування читає налаштування з shared/prefs: ставимо їх ще до першого малювання.
+applyPrefs(initialPrefs);
 
 let state: AppState = {
   phase: "loading",
@@ -81,6 +105,8 @@ let state: AppState = {
   active: ui.active ?? null,
   tab: ui.tab && TABS.includes(ui.tab) ? ui.tab : "service",
   theme: ui.theme ?? "auto",
+  prefs: initialPrefs,
+  reminderNoteSeen: ui.reminderNoteSeen === true,
   queue: [],
   offline: false,
   storageOk: true,
@@ -108,16 +134,30 @@ export const getState = (): AppState => state;
  */
 export const useStore = <T>(selector: (s: AppState) => T): T => useSyncExternalStore(subscribe, () => selector(state));
 
+/**
+ * Тексти поточної мови. Компонент підписується на всі налаштування, тож перемальовується
+ * і при зміні одиниць чи формату дати: числа й дати форматуються тими ж налаштуваннями.
+ */
+export const useT = (): Messages => MESSAGES[useStore((s) => s.prefs).lang];
+
 export const useCarView = (carId: string): CarView => {
   const data = useStore((s) => s.data);
-  return carView(data, carId, todayISO());
+  const prefs = useStore((s) => s.prefs);
+  return carView(data, carId, todayISO(), prefs);
 };
 
 const cache = createCache(() => localStorage);
 
 const saveUi = (): void => {
   try {
-    localStorage.setItem(UI_KEY, JSON.stringify({ tab: state.tab, active: state.active, theme: state.theme }));
+    const stored: StoredUi = {
+      tab: state.tab,
+      active: state.active ?? undefined,
+      theme: state.theme,
+      ...state.prefs,
+      reminderNoteSeen: state.reminderNoteSeen,
+    };
+    localStorage.setItem(UI_KEY, JSON.stringify(stored));
   } catch {
     // Вибір вкладки не вартий банера.
   }
@@ -175,7 +215,7 @@ let toastSeq = 0;
 export const toast = (text: string): void => {
   clearTimeout(toastTimer);
   setState({ toast: { id: ++toastSeq, text } });
-  toastTimer = setTimeout(() => setState({ toast: null }), 2200);
+  toastTimer = setTimeout(() => setState({ toast: null }), 2600);
 };
 
 export const setTab = (tab: Tab): void => {
@@ -201,6 +241,31 @@ export const setTheme = (theme: Theme): void => {
   // Логіка теми живе в public/theme.js: вона виконується ще до першого малювання.
   window.garageApplyTheme?.();
 };
+
+/** Мова сторінки для читалок екрана, перекладача браузера й заголовка вкладки. */
+const applyDocumentLang = (): void => {
+  const t = messages();
+  document.documentElement.lang = state.prefs.lang;
+  document.title = t.meta.title;
+  document.querySelector('meta[name="description"]')?.setAttribute("content", t.meta.description);
+};
+
+export const setPrefs = (patch: Partial<Prefs>): void => {
+  const prefs = { ...state.prefs, ...patch };
+  applyPrefs(prefs);
+  setState({ prefs });
+  saveUi();
+  applyDocumentLang();
+};
+
+export const dismissReminderNote = (): void => {
+  setState({ reminderNoteSeen: true });
+  saveUi();
+};
+
+/** Посилання на вхід через Google: мова потрібна, щоб Google і папки на Диску говорили нею ж. */
+export const googleHref = (path: "/api/google/login" | "/api/google/drive/connect"): string =>
+  `${path}?lang=${state.prefs.lang}`;
 
 /* Вікна. Кнопка «назад» на телефоні закриває вікно, а не сайт. */
 
@@ -280,6 +345,9 @@ export function dispatch(...ops: Op[]): void {
   void flush();
 }
 
+/** Кеш зі старої версії застосунку міг не мати нових списків. */
+const withDefaults = (data: GarageData): GarageData => ({ ...emptyData(), ...data, wishes: data.wishes ?? [] });
+
 export async function refresh({ force = false } = {}): Promise<void> {
   try {
     const res = await getIfChanged<StateResponse>("/api/state", force ? null : state.etag);
@@ -292,7 +360,7 @@ export async function refresh({ force = false } = {}): Promise<void> {
     const queue = reconcileQueue({ localUserId: state.user?.id ?? null, serverUserId: user.id, queue: state.queue, pending });
     if (pending) cache.clearPending();
     // Операції, які ще не дійшли до сервера, накладаємо поверх свіжих даних.
-    let data = server;
+    let data = withDefaults(server);
     for (const op of queue) data = applyOp(data, op);
     setState({ user, data, drive, queue, etag: res.etag, phase: "ready", offline: false });
     ensureActive();
@@ -305,18 +373,18 @@ export async function refresh({ force = false } = {}): Promise<void> {
   }
 }
 
-const REDIRECT_MESSAGES: Record<string, string> = {
-  "drive=connected": "Google Диск подключён",
-  "drive=denied": "Доступ к Google Диску не выдан",
-  "drive=scope": "Без галочки про файлы приложения Диск не подключить. Попробуй ещё раз.",
-  "drive=error": "Не получилось подключить Google Диск. Попробуй ещё раз.",
-  "google=denied": "Вход через Google отменён",
-  "google=error": "Не получилось войти через Google. Попробуй ещё раз.",
-  "google=state": "Сессия входа устарела. Попробуй ещё раз.",
-  "google=unverified": "У этого аккаунта Google не подтверждена почта.",
-  "google=linked": "Вход через Google привязан",
-  "google=taken": "Этот аккаунт Google уже привязан к другому профилю.",
-  "google=claimed": "Вход через Google привязан. Старый пароль отключён: новый можно задать в профиле.",
+const REDIRECT_MESSAGES: Record<string, keyof Messages["redirect"]> = {
+  "drive=connected": "driveConnected",
+  "drive=denied": "driveDenied",
+  "drive=scope": "driveScope",
+  "drive=error": "driveError",
+  "google=denied": "googleDenied",
+  "google=error": "googleError",
+  "google=state": "googleState",
+  "google=unverified": "googleUnverified",
+  "google=linked": "googleLinked",
+  "google=taken": "googleTaken",
+  "google=claimed": "googleClaimed",
 };
 
 const consumeUrlParams = (): void => {
@@ -325,7 +393,8 @@ const consumeUrlParams = (): void => {
   for (const key of ["drive", "google"]) {
     const value = url.searchParams.get(key);
     if (value) {
-      message = REDIRECT_MESSAGES[`${key}=${value}`] ?? message;
+      const known = REDIRECT_MESSAGES[`${key}=${value}`];
+      if (known) message = messages().redirect[known];
       url.searchParams.delete(key);
       if (key === "drive") setState({ tab: "data" });
     }
@@ -342,6 +411,7 @@ const consumeUrlParams = (): void => {
 export const clearResetToken = (): void => setState({ resetToken: null });
 
 export async function boot(): Promise<void> {
+  applyDocumentLang();
   window.addEventListener("popstate", () => {
     if (state.dialog) setState({ dialog: null });
   });
@@ -352,7 +422,7 @@ export async function boot(): Promise<void> {
 
   const cached = cache.read();
   if (cached) {
-    setState({ ...cached, phase: "ready" });
+    setState({ ...cached, data: withDefaults(cached.data), phase: "ready" });
     ensureActive();
   }
 
@@ -382,7 +452,7 @@ export async function syncNow(): Promise<void> {
 /** Після входу: забрати дані й дописати те, що чекало в черзі. Кидає помилку, якщо сервер недоступний. */
 export async function afterAuth(): Promise<void> {
   await refresh({ force: true });
-  if (state.phase !== "ready") throw new NetworkError("Нет связи с сервером.");
+  if (state.phase !== "ready") throw new NetworkError(messages().common.noServer);
   await flush();
   if (state.active) showDueReminders(state.active);
 }
@@ -394,14 +464,14 @@ export async function afterAuth(): Promise<void> {
 export async function logout(everywhere = false): Promise<void> {
   await flush();
   if (state.queue.length) {
-    toast("Есть несохранённые записи, а связи нет. Выйти можно, когда появится интернет.");
+    toast(messages().session.logoutPending);
     return;
   }
   try {
     await postJson(everywhere ? "/api/auth/logout-all" : "/api/auth/logout");
   } catch (err) {
     if (!(err instanceof HttpError && err.status === 401)) {
-      toast("Нет связи с сервером. Выйти можно, когда появится интернет.");
+      toast(messages().session.logoutOffline);
       return;
     }
   }
@@ -431,7 +501,7 @@ export const removePhoto = (id: string): void => {
 export const setUploading = (delta: number): void => setState({ uploading: Math.max(0, state.uploading + delta) });
 
 export const currentOdo = (carId: string): number | null =>
-  carView(state.data, carId, todayISO()).summary.currentOdo;
+  carView(state.data, carId, todayISO(), state.prefs).summary.currentOdo;
 
 /** Запам'ятовує показане вікно, щоб той самий поріг не вискакував удруге. */
 export function dueReminderDialog(carId: string, afterSave: boolean): Dialog {
@@ -454,32 +524,73 @@ function showDueReminders(carId: string): void {
 
 export const markReminderDone = (reminder: Reminder): void => {
   dispatch({ type: "reminder.put", data: { ...reminder, done: true, doneDate: todayISO() } });
-  toast("Отмечено как сделанное");
+  toast(messages().reminders.markedDone);
 };
+
+/* Видалення записів */
+
+/** Записи разом з їхніми ще не виконаними нагадуваннями — так само, як кнопка «Удалить» у формі. */
+export function deleteRecordsOps(kind: "service" | "fuel", ids: string[]): Op[] {
+  const set = new Set(ids);
+  const ops: Op[] = ids.map((id): Op => (kind === "service" ? { type: "service.del", id } : { type: "fuel.del", id }));
+  for (const r of state.data.reminders) {
+    if (r.recordId && set.has(r.recordId) && !r.done) ops.push({ type: "reminder.del", id: r.id });
+  }
+  return ops;
+}
+
+export function deleteRecords(kind: "service" | "fuel", ids: string[]): void {
+  if (!ids.length) return;
+  dispatch(...deleteRecordsOps(kind, ids));
+}
+
+/* Хотілки */
+
+/**
+ * Галочка «виконано». Якщо в хотілки вже є живий запис витрат, він просто знову рахується.
+ * Якщо немає — пропонуємо його створити. Знята галочка лишає зв'язок: запис стає «неактуальним».
+ */
+export function setWishDone(wish: Wish, done: boolean): void {
+  const t = messages().wishes;
+  const hasRecord = wish.recordId != null && state.data.service.some((r) => r.id === wish.recordId);
+  const next: Wish = { ...wish, done, doneDate: done ? todayISO() : null };
+  dispatch({ type: "wish.put", data: next });
+  if (!done) return toast(hasRecord ? t.toastUndoneLinked : t.toastUndone);
+  if (hasRecord) return toast(t.toastRedone);
+  openDialog({ type: "wishDone", wish: next });
+}
+
+/** Залишити «неактуальні» записи: прибрати їхній зв'язок із хотілками. */
+export function unlinkWishes(wishes: Wish[]): void {
+  if (!wishes.length) return;
+  dispatch(...wishes.map((w): Op => ({ type: "wish.put", data: { ...w, recordId: null } })));
+}
 
 /* Демо і відновлення */
 
 export function loadDemo(): void {
-  const demo = demoRecords();
+  const demo = demoRecords(todayISO());
   dispatch(
     { type: "car.put", data: demo.car },
     ...demo.service.map((data): Op => ({ type: "service.put", data })),
     ...demo.fuel.map((data): Op => ({ type: "fuel.put", data })),
+    ...demo.wishes.map((data): Op => ({ type: "wish.put", data })),
     { type: "demo.set", value: true },
   );
   setState({ active: demo.car.id, tab: "service" });
   saveUi();
 }
 
-export function applyBackup(raw: RawBackup): string {
-  const merged = mergeBackup(state.data, raw, genId);
+export function applyBackup(raw: RawBackup): { added: number; skipped: number } {
+  const merged = mergeBackup(state.data, raw, genId, todayISO());
   const ops: Op[] = [
     ...merged.cars.map((data): Op => ({ type: "car.put", data })),
     ...merged.service.map((data): Op => ({ type: "service.put", data })),
     ...merged.fuel.map((data): Op => ({ type: "fuel.put", data })),
     ...merged.reminders.map((data): Op => ({ type: "reminder.put", data })),
+    ...merged.wishes.map((data): Op => ({ type: "wish.put", data })),
   ];
   if (merged.added > 0 && state.data.demo) ops.push({ type: "demo.set", value: false });
   if (ops.length) dispatch(...ops);
-  return `Загружено: добавлено ${merged.added}, уже были — ${merged.skipped}`;
+  return { added: merged.added, skipped: merged.skipped };
 }

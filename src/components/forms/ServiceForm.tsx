@@ -1,10 +1,11 @@
 import { useId, useState, type FormEvent } from "react";
 import { sumMoney } from "../../../shared/calc";
-import { CATEGORIES, ITEM_KINDS, LIMITS } from "../../../shared/constants";
-import { fmtKm, fmtMoney, fmtNum, genId, todayISO } from "../../../shared/format";
+import { CATEGORIES, DEFAULT_CATEGORY, ITEM_KINDS, LIMITS, WISH_CATEGORY, categoryLabel, itemKindLabel } from "../../../shared/constants";
+import { fmtDist, fmtMoney, fmtNum, genId, numInput, todayISO, unitLabel } from "../../../shared/format";
 import { parseMoney, parseOdo } from "../../../shared/parse";
+import { fromKm, toKm } from "../../../shared/prefs";
 import type { ItemKind, Op, ServiceRecord } from "../../../shared/types";
-import { closeDialog, dispatch, toast, useStore } from "../../lib/store";
+import { closeDialog, deleteRecordsOps, dispatch, getState, toast, useStore, useT, type ServiceDraft } from "../../lib/store";
 import { CloseIcon, PlusIcon } from "../icons";
 import { Modal } from "../Modal";
 import {
@@ -30,7 +31,22 @@ const itemSum = (raw: string): number | null => {
   return typeof value === "number" && value <= LIMITS.maxSum ? value : null;
 };
 
-export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; car?: string }) {
+/**
+ * Запис обслуговування. `draft` і `wishId` приходять, коли запис створюють із виконаної хотілки:
+ * опис і ціна підставлені, а після збереження хотілка посилатиметься на цей запис.
+ */
+export function ServiceForm({
+  record,
+  car: carProp,
+  draft,
+  wishId,
+}: {
+  record?: ServiceRecord;
+  car?: string;
+  draft?: ServiceDraft;
+  wishId?: string;
+}) {
+  const t = useT();
   const active = useStore((s) => s.active);
   const cars = useStore((s) => s.data.cars);
   const allService = useStore((s) => s.data.service);
@@ -38,21 +54,22 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
 
   const [car, setCar] = useState(record?.car ?? carProp ?? active ?? cars[0]?.id ?? "");
   const [date, setDate] = useState(record?.date ?? todayISO());
-  const [odo, setOdo] = useState(record?.odo != null ? String(record.odo) : "");
-  const [cat, setCat] = useState<string>(record?.cat ?? CATEGORIES[0]);
-  const [what, setWhat] = useState(record?.what ?? "");
+  const [odo, setOdo] = useState(record?.odo != null ? String(fromKm(record.odo)) : "");
+  const [cat, setCat] = useState<string>(record?.cat ?? (draft ? WISH_CATEGORY : DEFAULT_CATEGORY));
+  const [what, setWhat] = useState(record?.what ?? draft?.what ?? "");
   const [where, setWhere] = useState(record?.where ?? "");
-  const [sum, setSum] = useState(record ? String(record.sum).replace(".", ",") : "");
-  const [note, setNote] = useState(record?.note ?? "");
+  const [sum, setSum] = useState(record ? numInput(record.sum) : draft?.sum != null ? numInput(draft.sum) : "");
+  const [note, setNote] = useState(record?.note ?? draft?.note ?? "");
   const [items, setItems] = useState<ItemDraft[]>(
-    (record?.items ?? []).map((it) => ({ ...it, sum: String(it.sum).replace(".", ",") })),
+    (record?.items ?? []).map((it) => ({ ...it, sum: numInput(it.sum) })),
   );
   const [error, setError] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
   const prev = usePrevOdo(car, record?.id);
   const parsedOdo = parseOdo(odo);
-  const baseOdo = typeof parsedOdo === "number" ? parsedOdo : (prev ?? carOdo(car));
+  const odoKm = typeof parsedOdo === "number" ? toKm(parsedOdo) : null;
+  const baseOdo = odoKm ?? prev ?? carOdo(car);
   const linked = useLinkedReminder(record?.id);
   const [reminder, setReminder] = useReminderDraft(linked, record?.odo ?? carOdo(record?.car ?? ""));
 
@@ -74,16 +91,16 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!date) return setError("Укажи дату.");
-    if (parsedOdo === "invalid") return setError("Пробег — только цифры.");
-    if (!what.trim()) return setError("Напиши, что сделано или куплено.");
+    if (!date) return setError(t.serviceForm.errDate);
+    if (parsedOdo === "invalid") return setError(t.serviceForm.errOdo);
+    if (!what.trim()) return setError(t.serviceForm.errWhat);
 
     let total: number;
     if (items.length) {
-      if (items.some((it) => itemSum(it.sum) == null)) return setError("Укажи сумму в каждой строке расходов.");
+      if (items.some((it) => itemSum(it.sum) == null)) return setError(t.serviceForm.errItemSum);
       total = itemsTotal;
     } else {
-      if (typeof typed !== "number" || typed > LIMITS.maxSum) return setError("Укажи сумму (0, если бесплатно).");
+      if (typeof typed !== "number" || typed > LIMITS.maxSum) return setError(t.serviceForm.errSum);
       total = typed;
     }
 
@@ -101,7 +118,7 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
       id,
       car,
       date,
-      odo: typeof parsedOdo === "number" ? parsedOdo : null,
+      odo: odoKm,
       cat,
       what: what.trim(),
       where: where.trim(),
@@ -109,41 +126,49 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
       note: note.trim(),
       items: items.map((it) => ({ id: it.id, kind: it.kind, name: it.name.trim(), sum: itemSum(it.sum) ?? 0 })),
     };
-    dispatch({ type: "service.put", data: next }, ...reminderOps(built.reminder, linked));
+    const ops: Op[] = [{ type: "service.put", data: next }, ...reminderOps(built.reminder, linked)];
+    const wish = wishId ? getState().data.wishes.find((w) => w.id === wishId) : undefined;
+    if (wish) {
+      ops.push({
+        type: "wish.put",
+        data: { ...wish, done: true, doneDate: wish.doneDate ?? date, recordId: id },
+      });
+    }
+    dispatch(...ops);
     finishSave(car, !record, files, id);
   };
 
   const remove = () => {
     if (!record) return;
-    const ops: Op[] = [{ type: "service.del", id: record.id }];
-    if (linked) ops.push({ type: "reminder.del", id: linked.id });
-    dispatch(...ops);
+    dispatch(...deleteRecordsOps("service", [record.id]));
     closeDialog();
-    toast("Запись удалена");
+    toast(t.common.recordDeleted);
   };
 
-  const categories: string[] = (CATEGORIES as readonly string[]).includes(cat) ? [...CATEGORIES] : [...CATEGORIES, cat];
+  const ids: string[] = CATEGORIES.map((c) => c.id);
+  const categories = ids.includes(cat) ? ids : [...ids, cat];
+  const unit = unitLabel();
 
   return (
-    <Modal title={record ? "Запись" : "Ремонт, покупка, сервис"} onClose={() => closeDialog()}>
+    <Modal title={record ? t.serviceForm.titleEdit : t.serviceForm.titleNew} onClose={() => closeDialog()}>
       <form onSubmit={submit} noValidate>
         <CarSelect value={car} onChange={setCar} />
         <div className="field-row">
-          <Field label="Дата">
+          <Field label={t.serviceForm.date}>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
-          <Field label="Пробег, км" hint={prev != null ? `Прошлый: ${fmtKm(prev)}` : "Можно не указывать"}>
+          <Field label={t.serviceForm.odo(unit)} hint={prev != null ? t.serviceForm.prev(fmtDist(prev)) : t.common.optional}>
             <input
               inputMode="numeric"
               value={odo}
               onChange={(e) => setOdo(e.target.value)}
-              placeholder={prev != null ? fmtNum(prev) : ""}
+              placeholder={prev != null ? fmtNum(fromKm(prev)) : ""}
             />
           </Field>
         </div>
         <div className="field">
           <span className="field-label" id={catId}>
-            Категория
+            {t.serviceForm.category}
           </span>
           <div className="chip-grid" role="group" aria-labelledby={catId}>
             {categories.map((c) => (
@@ -154,22 +179,22 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
                 aria-pressed={c === cat}
                 onClick={() => setCat(c)}
               >
-                {c}
+                {categoryLabel(c)}
               </button>
             ))}
           </div>
         </div>
-        <Field label="Что сделано / куплено">
+        <Field label={t.serviceForm.what}>
           <textarea rows={2} value={what} onChange={(e) => setWhat(e.target.value)} maxLength={LIMITS.whatLength} />
         </Field>
-        <Field label="Где">
+        <Field label={t.serviceForm.where}>
           <input value={where} onChange={(e) => setWhere(e.target.value)} list={whereId} maxLength={LIMITS.placeLength} />
         </Field>
         <Suggest id={whereId} values={allService.map((r) => r.where)} />
 
         <div className="field">
           <label className="field-label" htmlFor={sumId}>
-            Сумма ₴
+            {t.serviceForm.sum}
           </label>
           {items.length ? (
             <output id={sumId} className="sum-total">
@@ -186,28 +211,28 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
               {items.map((it) => (
                 <li key={it.id} className="item-row">
                   <select
-                    aria-label="Тип расхода"
+                    aria-label={t.serviceForm.kindAria}
                     value={it.kind}
                     onChange={(e) => patchItem(it.id, { kind: e.target.value as ItemKind })}
                   >
                     {ITEM_KINDS.map((k) => (
-                      <option key={k.value} value={k.value}>
-                        {k.label}
+                      <option key={k} value={k}>
+                        {itemKindLabel(k)}
                       </option>
                     ))}
                   </select>
                   <input
                     className="item-name"
-                    aria-label="Название"
+                    aria-label={t.serviceForm.nameAria}
                     value={it.name}
-                    placeholder={ITEM_KINDS.find((k) => k.value === it.kind)?.placeholder}
+                    placeholder={t.itemKinds[it.kind].placeholder}
                     list={namesId}
                     maxLength={LIMITS.itemNameLength}
                     onChange={(e) => patchItem(it.id, { name: e.target.value })}
                   />
                   <input
                     className="item-sum"
-                    aria-label="Сумма, ₴"
+                    aria-label={t.serviceForm.sumAria}
                     inputMode="decimal"
                     placeholder="₴"
                     value={it.sum}
@@ -216,7 +241,7 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
                   <button
                     type="button"
                     className="icon-btn"
-                    aria-label="Убрать строку"
+                    aria-label={t.serviceForm.removeRow}
                     onClick={() => setItems((list) => list.filter((x) => x.id !== it.id))}
                   >
                     <CloseIcon size={16} />
@@ -228,29 +253,25 @@ export function ServiceForm({ record, car: carProp }: { record?: ServiceRecord; 
           <Suggest id={namesId} values={allService.flatMap((r) => r.items.map((i) => i.name))} />
           {items.length < LIMITS.itemsPerRecord && (
             <div className="item-add">
-              <span className="muted">{items.length ? "Ещё строка:" : "Расписать сумму:"}</span>
+              <span className="muted">{items.length ? t.serviceForm.moreRow : t.serviceForm.split}</span>
               {ITEM_KINDS.map((k) => (
-                <button key={k.value} type="button" className="preset" onClick={() => addItem(k.value)}>
-                  <PlusIcon size={14} /> {k.label.toLowerCase()}
+                <button key={k} type="button" className="preset" onClick={() => addItem(k)}>
+                  <PlusIcon size={14} /> {itemKindLabel(k).toLocaleLowerCase()}
                 </button>
               ))}
             </div>
           )}
           {leftover > 0 && (
             <p className="field-hint">
-              Из {fmtMoney(typed as number)} не расписано {fmtMoney(leftover)}.{" "}
-              <button
-                type="button"
-                className="link-btn"
-                onClick={() => addItem("extra", String(leftover).replace(".", ","))}
-              >
-                Добавить строкой «другое»
+              {t.serviceForm.leftover(fmtMoney(typed as number), fmtMoney(leftover))}{" "}
+              <button type="button" className="link-btn" onClick={() => addItem("extra", numInput(leftover))}>
+                {t.serviceForm.addOther}
               </button>
             </p>
           )}
         </div>
 
-        <Field label="Заметки">
+        <Field label={t.serviceForm.notes}>
           <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={LIMITS.noteLength} />
         </Field>
         <ReminderFields draft={reminder} onChange={setReminder} baseOdo={baseOdo} baseDate={date} />

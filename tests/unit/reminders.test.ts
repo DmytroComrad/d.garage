@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { addMonths, reminderStatus, reminderText, remindersToNotify } from "../../shared/reminders";
+import { DEFAULT_PREFS, applyPrefs } from "../../shared/prefs";
 import type { Reminder } from "../../shared/types";
+
+// Очікування записані російською, як інтерфейс до появи інших мов.
+applyPrefs({ ...DEFAULT_PREFS, lang: "ru" });
 
 const rem = (over: Partial<Reminder> = {}): Reminder => ({
   id: "r1",

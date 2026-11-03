@@ -6,7 +6,9 @@ const out = "tests/e2e/screenshots";
 const browser = await chromium.launch();
 
 async function run(name, ctxOptions, scheme) {
-  const ctx = await browser.newContext({ ...ctxOptions, locale: "ru-RU", colorScheme: scheme });
+  // Сценарій написаний російською: мову задаємо явно, бо за замовчуванням сайт англійською.
+  const storageState = { cookies: [], origins: [{ origin: base, localStorage: [{ name: "garage-ui", value: '{"lang":"ru"}' }] }] };
+  const ctx = await browser.newContext({ ...ctxOptions, locale: "ru-RU", colorScheme: scheme, storageState });
   const page = await ctx.newPage();
   const shot = async (label, full = false) => {
     await page.waitForTimeout(1500);

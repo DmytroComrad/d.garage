@@ -13,9 +13,16 @@ export const emptyData = (): GarageData => ({
   service: [],
   fuel: [],
   reminders: [],
+  wishes: [],
   photos: [],
   demo: false,
 });
+
+/** Видалений запис більше не може бути «записом витрат» хотілки. */
+const unlinkWishes = (data: GarageData, recordId: string): GarageData["wishes"] =>
+  data.wishes.some((w) => w.recordId === recordId)
+    ? data.wishes.map((w) => (w.recordId === recordId ? { ...w, recordId: null } : w))
+    : data.wishes;
 
 /** Запис переїхав на іншу машину: його фото й нагадування їдуть разом із ним. */
 const moveLinked = (data: GarageData, recordId: string, car: string): Pick<GarageData, "photos" | "reminders"> => ({
@@ -39,6 +46,7 @@ export function applyOp(data: GarageData, op: Op): GarageData {
         service: data.service.filter((r) => r.car !== op.id),
         fuel: data.fuel.filter((r) => r.car !== op.id),
         reminders: data.reminders.filter((r) => r.car !== op.id),
+        wishes: data.wishes.filter((w) => w.car !== op.id),
         photos: data.photos.filter((p) => p.car !== op.id),
       };
     case "service.put":
@@ -48,6 +56,7 @@ export function applyOp(data: GarageData, op: Op): GarageData {
         ...data,
         service: data.service.filter((r) => r.id !== op.id),
         photos: data.photos.filter((p) => p.recordId !== op.id),
+        wishes: unlinkWishes(data, op.id),
       };
     case "fuel.put":
       return { ...data, fuel: upsert(data.fuel, op.data), ...moveLinked(data, op.data.id, op.data.car) };
@@ -61,6 +70,10 @@ export function applyOp(data: GarageData, op: Op): GarageData {
       return { ...data, reminders: upsert(data.reminders, op.data) };
     case "reminder.del":
       return { ...data, reminders: data.reminders.filter((r) => r.id !== op.id) };
+    case "wish.put":
+      return { ...data, wishes: upsert(data.wishes, op.data) };
+    case "wish.del":
+      return { ...data, wishes: data.wishes.filter((w) => w.id !== op.id) };
     case "demo.set":
       return { ...data, demo: op.value };
     case "all.del":
@@ -80,6 +93,10 @@ export function retargetOp(op: Op, aliases: ReadonlyMap<string, string>): Op {
       return car ? { ...op, data: { ...op.data, car } } : op;
     }
     case "reminder.put": {
+      const car = aliases.get(op.data.car);
+      return car ? { ...op, data: { ...op.data, car } } : op;
+    }
+    case "wish.put": {
       const car = aliases.get(op.data.car);
       return car ? { ...op, data: { ...op.data, car } } : op;
     }

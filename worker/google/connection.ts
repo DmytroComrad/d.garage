@@ -1,3 +1,5 @@
+import { MESSAGES } from "../../shared/i18n";
+import type { Lang } from "../../shared/prefs";
 import type { DriveStatus } from "../../shared/types";
 import { decryptToken, encryptToken } from "../crypto";
 import { ApiError, type Bindings } from "../types";
@@ -12,16 +14,15 @@ const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
  */
 export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
-const ROOT_FOLDER = "Гараж Амедро";
-const DISCONNECTED = "Google Диск не подключён.";
-const GOOGLE_DOWN = "Google сейчас не отвечает. Попробуй позже.";
+const DISCONNECTED = "driveDisconnected";
+const GOOGLE_DOWN = "googleDown";
 const now = () => Math.floor(Date.now() / 1000);
 
 export const googleConfigured = (env: Bindings): boolean =>
   Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.TOKEN_KEY);
 
 export const tokenKey = (env: Bindings): string => {
-  if (!env.TOKEN_KEY) throw new ApiError(503, "Google пока не настроен на сервере.");
+  if (!env.TOKEN_KEY) throw new ApiError(503, "googleNotConfigured");
   return env.TOKEN_KEY;
 };
 
@@ -34,6 +35,7 @@ export type Connection = {
   root_folder_id: string | null;
   gallery_folder_id: string | null;
   shots_folder_id: string | null;
+  folders_lang: string | null;
   sheet_id: string | null;
   sheet_exported_at: number | null;
 };
@@ -83,7 +85,7 @@ async function accessTokenFor(env: Bindings, conn: Connection): Promise<string> 
   if (body.error === "invalid_grant") {
     // Користувач відкликав доступ на боці Google: прибираємо підключення, фото лишаються на його Диску.
     await env.DB.prepare("DELETE FROM google_connections WHERE user_id = ?").bind(conn.user_id).run();
-    throw new ApiError(409, "Доступ к Google Диску отозван. Подключи его заново.", "drive_disconnected");
+    throw new ApiError(409, "driveRevoked", "drive_disconnected");
   }
   if (!res.ok || !body.access_token) throw new ApiError(502, GOOGLE_DOWN);
 
@@ -112,33 +114,63 @@ async function createFolder(token: string, name: string, parent?: string): Promi
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: parent ? [parent] : undefined }),
   });
-  if (!res.ok) throw new ApiError(502, "Не получилось создать папку на Google Диске.");
+  if (!res.ok) throw new ApiError(502, "folderFailed");
   return (await res.json<{ id: string }>()).id;
 }
 
-/** Папки: «Гараж Амедро» → «Галерея» і «Скриншоты». Якщо користувач їх видалив, створюємо заново. */
+/** Перейменування не критичне: якщо Google не відповів, спробуємо наступного разу. */
+async function renameFile(token: string, id: string, name: string): Promise<boolean> {
+  const res = await fetch(`${DRIVE_URL}/${encodeURIComponent(id)}?fields=id`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  }).catch(() => null);
+  return Boolean(res?.ok);
+}
+
+/**
+ * Папки: «D.Garage» → «Галерея» (фото з вкладки «Галерея») і «Із записів» (чеки й фото, прикріплені до записів).
+ * Назви — мовою користувача. Видалені папки створюємо заново, а наявні перейменовуємо, якщо змінилась мова
+ * або вони ще зі старою назвою «Гараж Амедро».
+ */
 export async function ensureFolders(
   env: Bindings,
   conn: Connection,
   token: string,
+  lang: Lang,
 ): Promise<{ gallery: string; shots: string; root: string }> {
+  const names = MESSAGES[lang].driveFolders;
   const existing = async (id: string | null): Promise<string | null> =>
     id && (await driveFileState(token, id)) === "alive" ? id : null;
 
   const keptRoot = await existing(conn.root_folder_id);
-  const root = keptRoot ?? (await createFolder(token, ROOT_FOLDER));
   // Нова коренева папка означає, що старі вкладені теж треба створити.
-  const gallery = (keptRoot && (await existing(conn.gallery_folder_id))) || (await createFolder(token, "Галерея", root));
-  const shots = (keptRoot && (await existing(conn.shots_folder_id))) || (await createFolder(token, "Скриншоты", root));
+  const keptGallery = keptRoot && (await existing(conn.gallery_folder_id));
+  const keptShots = keptRoot && (await existing(conn.shots_folder_id));
+  const root = keptRoot ?? (await createFolder(token, names.root));
+  const gallery = keptGallery || (await createFolder(token, names.gallery, root));
+  const shots = keptShots || (await createFolder(token, names.records, root));
+
+  let foldersLang: string | null = lang;
+  if (conn.folders_lang !== lang) {
+    const renamed = await Promise.all([
+      keptRoot ? renameFile(token, root, names.root) : true,
+      keptGallery ? renameFile(token, gallery, names.gallery) : true,
+      keptShots ? renameFile(token, shots, names.records) : true,
+    ]);
+    // Не вдалось — лишаємо стару позначку, щоб спробувати при наступному завантаженні.
+    if (!renamed.every(Boolean)) foldersLang = conn.folders_lang;
+  }
 
   await env.DB.prepare(
-    "UPDATE google_connections SET root_folder_id = ?, gallery_folder_id = ?, shots_folder_id = ? WHERE user_id = ?",
+    "UPDATE google_connections SET root_folder_id = ?, gallery_folder_id = ?, shots_folder_id = ?, folders_lang = ? WHERE user_id = ?",
   )
-    .bind(root, gallery, shots, conn.user_id)
+    .bind(root, gallery, shots, foldersLang, conn.user_id)
     .run();
   conn.root_folder_id = root;
   conn.gallery_folder_id = gallery;
   conn.shots_folder_id = shots;
+  conn.folders_lang = foldersLang;
   return { gallery, shots, root };
 }
 

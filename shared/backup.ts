@@ -1,63 +1,63 @@
-import { BACKUP_APP, LIMITS } from "./constants";
+import { BACKUP_APP, LEGACY_BACKUP_APPS, LIMITS, OTHER_CATEGORY } from "./constants";
 import { genId, nameKey } from "./format";
-import { isIsoDate } from "./parse";
-import type { Backup, Car, FuelRecord, GarageData, Reminder, ServiceItem, ServiceRecord } from "./types";
+import { isHttpUrl, isIsoDate } from "./parse";
+import type { Backup, Car, FuelRecord, GarageData, Reminder, ServiceItem, ServiceRecord, Wish } from "./types";
 
-type BackupSource = Pick<GarageData, "cars" | "service" | "fuel" | "reminders">;
+type BackupSource = Pick<GarageData, "cars" | "service" | "fuel" | "reminders" | "wishes">;
 
 export function buildBackup(data: BackupSource, carId?: string): Backup {
   const only = <T extends { car: string }>(list: T[]) => (carId ? list.filter((r) => r.car === carId) : list);
   return {
     app: BACKUP_APP,
-    v: 2,
+    v: 3,
     saved: new Date().toISOString(),
     cars: carId ? data.cars.filter((c) => c.id === carId) : data.cars,
     service: only(data.service),
     fuel: only(data.fuel),
     reminders: only(data.reminders),
+    wishes: only(data.wishes),
   };
 }
 
 export const backupFileName = (today: string, carName?: string): string => {
-  if (!carName) return `garage-backup-${today}.txt`;
+  if (!carName) return `d-garage-backup-${today}.txt`;
   const safe = carName.replace(/[\\/:*?"<>|]+/g, "").trim().replace(/\s+/g, "-") || "car";
-  return `garage-backup-${safe}-${today}.txt`;
+  return `d-garage-backup-${safe}-${today}.txt`;
 };
 
 export const backupToText = (backup: Backup): string => JSON.stringify(backup, null, 2);
-
-export const BACKUP_ERRORS = {
-  corrupted: "Не получилось прочитать бэкап — текст обрезан или повреждён.",
-  notBackup: "Это не похоже на бэкап гаража.",
-  file: "Не получилось прочитать файл.",
-} as const;
 
 export type RawBackup = {
   cars: unknown[];
   service?: unknown[];
   fuel?: unknown[];
   reminders?: unknown[];
+  wishes?: unknown[];
 };
 
-export type ParsedBackup = { ok: true; backup: RawBackup } | { ok: false; error: string };
+/** Код помилки, а не текст: текст обирає інтерфейс своєю мовою. */
+export type BackupError = "corrupted" | "notBackup";
+export type ParsedBackup = { ok: true; backup: RawBackup } | { ok: false; error: BackupError };
+
+const KNOWN_APPS: readonly unknown[] = [BACKUP_APP, ...LEGACY_BACKUP_APPS];
 
 export function parseBackupText(text: string): ParsedBackup {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text.replace(/^﻿/, "").trim());
   } catch {
-    return { ok: false, error: BACKUP_ERRORS.corrupted };
+    return { ok: false, error: "corrupted" };
   }
   const obj = parsed as Partial<Record<string, unknown>> | null;
   if (
     !obj ||
     typeof obj !== "object" ||
-    obj.app !== BACKUP_APP ||
+    !KNOWN_APPS.includes(obj.app) ||
     !Array.isArray(obj.cars) ||
     (obj.service !== undefined && !Array.isArray(obj.service)) ||
     (obj.fuel !== undefined && !Array.isArray(obj.fuel))
   ) {
-    return { ok: false, error: BACKUP_ERRORS.notBackup };
+    return { ok: false, error: "notBackup" };
   }
   return { ok: true, backup: obj as unknown as RawBackup };
 }
@@ -90,11 +90,14 @@ const dupKey = (type: string, date: string, carName: string, odo: number | null,
 const reminderKey = (carName: string, title: string, dueOdo: number | null, dueDate: string | null): string =>
   [nameKey(carName), nameKey(title), dueOdo ?? "", dueDate ?? ""].join("|");
 
+const wishKey = (carName: string, title: string): string => [nameKey(carName), nameKey(title)].join("|");
+
 export type MergeResult = {
   cars: Car[];
   service: ServiceRecord[];
   fuel: FuelRecord[];
   reminders: Reminder[];
+  wishes: Wish[];
   added: number;
   skipped: number;
 };
@@ -105,7 +108,12 @@ export type MergeResult = {
  * дублікат = збіг типу, дати, назви машини, пробігу і суми в копійках.
  * Межі ті самі, що на сервері: те, що він відхилить, не рахується доданим.
  */
-export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: () => string = genId): MergeResult {
+export function mergeBackup(
+  current: BackupSource,
+  backup: RawBackup,
+  makeId: () => string = genId,
+  today: string = new Date().toISOString().slice(0, 10),
+): MergeResult {
   const carsByKey = new Map(current.cars.map((c) => [nameKey(c.name), c]));
   const nameById = new Map(current.cars.map((c) => [c.id, c.name]));
   const newCars: Car[] = [];
@@ -171,7 +179,7 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
       car: car.id,
       date: r.date,
       odo,
-      cat: str(r.cat, LIMITS.categoryLength) || "Другое",
+      cat: str(r.cat, LIMITS.categoryLength) || OTHER_CATEGORY,
       what,
       where: str(r.where, LIMITS.placeLength),
       sum,
@@ -251,5 +259,40 @@ export function mergeBackup(current: BackupSource, backup: RawBackup, makeId: ()
     added++;
   }
 
-  return { cars: newCars, service, fuel, reminders, added, skipped };
+  const seenWishes = new Set(current.wishes.map((w) => wishKey(nameById.get(w.car) ?? "", w.title)));
+  const wishes: Wish[] = [];
+  for (const raw of backup.wishes ?? []) {
+    const r = raw as Record<string, unknown>;
+    const car = backupCars.get(str(r?.car, 200));
+    const title = str(r?.title, LIMITS.titleLength);
+    if (!car || !title) {
+      skipped++;
+      continue;
+    }
+    const key = wishKey(car.name, title);
+    if (seenWishes.has(key)) {
+      skipped++;
+      continue;
+    }
+    seenWishes.add(key);
+    const done = r.done === true;
+    wishes.push({
+      id: makeId(),
+      car: car.id,
+      title,
+      price: r.price == null || r.price === "" ? null : money(r.price),
+      links: (Array.isArray(r.links) ? r.links : [])
+        .map((l) => (typeof l === "string" ? l.trim() : ""))
+        .filter(isHttpUrl)
+        .slice(0, LIMITS.linksPerWish),
+      note: str(r.note, LIMITS.noteLength),
+      added: isIsoDate(r.added) ? r.added : today,
+      done,
+      doneDate: done && isIsoDate(r.doneDate) ? r.doneDate : null,
+      recordId: recordIdMap.get(str(r.recordId, 200)) ?? null,
+    });
+    added++;
+  }
+
+  return { cars: newCars, service, fuel, reminders, wishes, added, skipped };
 }

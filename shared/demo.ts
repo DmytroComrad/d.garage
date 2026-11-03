@@ -1,9 +1,16 @@
 import { genId } from "./format";
-import type { Car, FuelRecord, ServiceRecord } from "./types";
+import { messages } from "./i18n";
+import type { Car, FuelRecord, ServiceRecord, Wish } from "./types";
 
-/** Приклад гаража: цифри з критеріїв приймання, назви знеособлені. */
-export function demoRecords(): { car: Car; service: ServiceRecord[]; fuel: FuelRecord[] } {
-  const car: Car = { id: genId(), name: "Демо-машина" };
+/** Приклад гаража: цифри з критеріїв приймання, назви знеособлені й перекладені мовою інтерфейсу. */
+export function demoRecords(today: string): {
+  car: Car;
+  service: ServiceRecord[];
+  fuel: FuelRecord[];
+  wishes: Wish[];
+} {
+  const t = messages().demo;
+  const car: Car = { id: genId(), name: t.car };
   const svc = (date: string, odo: number, cat: string, what: string, where: string, sum: number): ServiceRecord => ({
     id: genId(),
     car: car.id,
@@ -27,16 +34,26 @@ export function demoRecords(): { car: Car; service: ServiceRecord[]; fuel: FuelR
     full: true,
     note: "",
   });
+  const wish = (title: string, price: number, note = ""): Wish => ({
+    id: genId(),
+    car: car.id,
+    title,
+    price,
+    links: [],
+    note,
+    added: today,
+    done: false,
+    doneDate: null,
+    recordId: null,
+  });
   return {
     car,
     service: [
-      svc("2026-08-17", 327460, "Ремонт", "Замена компрессора кондиционера, радиатора кондиционера, уплотнений", "Автосервис", 4305),
-      svc("2026-08-17", 327460, "ТО / расходники", "Замена ремня ГРМ, помпы, ремня ГУР, ремня генератора", "Автосервис", 8595),
-      svc("2026-08-25", 327765, "ТО / расходники", "Заправка кондиционера, мойка + чистка салона", "Детейлинг", 8620),
+      svc("2026-08-17", 327460, "Ремонт", t.acRepair, t.shop, 4305),
+      svc("2026-08-17", 327460, "ТО / расходники", t.timingBelt, t.shop, 8595),
+      svc("2026-08-25", 327765, "ТО / расходники", t.detailing, t.detailer, 8620),
     ],
-    fuel: [
-      fl("2026-08-21", 327599, 37.74, 2939.95, "АЗС на трассе"),
-      fl("2026-08-31", 328030, 33.8, 2633.02, "АЗС у дома"),
-    ],
+    fuel: [fl("2026-08-21", 327599, 37.74, 2939.95, t.highway), fl("2026-08-31", 328030, 33.8, 2633.02, t.nearHome)],
+    wishes: [wish(t.winterTires, 14000, t.winterTiresNote), wish(t.dashcam, 3500)],
   };
 }

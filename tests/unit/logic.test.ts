@@ -7,9 +7,13 @@ import { buildReminder, notifiedLevel, reminderDraft, sortReminders } from "../.
 import { opSchema } from "../../shared/schema";
 import { buildSheets, type Sheet } from "../../shared/sheet";
 import type { FuelRecord, Op, Photo, Reminder } from "../../shared/types";
+import { DEFAULT_PREFS, applyPrefs } from "../../shared/prefs";
 import { carView } from "../../src/lib/view";
 import { buildXlsx } from "../../src/lib/xlsx";
 import { CAR, fuel, service } from "./fixtures";
+
+// Тексти помилок в очікуваннях — російською, як інтерфейс до появи інших мов.
+applyPrefs({ ...DEFAULT_PREFS, lang: "ru" });
 
 const rem = (over: Partial<Reminder> = {}): Reminder => ({
   id: "r1",
@@ -134,7 +138,7 @@ describe("напоминание в формі", () => {
   });
 
   it("помилки: сміття, нічого не вказано, кілометри без пробігу", () => {
-    expect(buildReminder(draft({ km: "abc" }), opts)).toEqual({ error: "В напоминании километры — только цифры." });
+    expect(buildReminder(draft({ km: "abc" }), opts)).toEqual({ error: "В напоминании расстояние — только цифры." });
     expect("error" in buildReminder(draft({ km: "" }), opts)).toBe(true);
     expect("error" in buildReminder(draft(), { ...opts, baseOdo: null })).toBe(true);
   });
@@ -256,13 +260,17 @@ describe("подання машини", () => {
   const data = { ...emptyData(), service, fuel };
 
   it("те саме подання, доки дані не змінились", () => {
-    expect(carView(data, CAR, "2026-09-15")).toBe(carView(data, CAR, "2026-09-15"));
-    expect(carView(data, CAR, "2026-09-15")).not.toBe(carView(data, CAR, "2026-09-16"));
-    expect(carView({ ...data }, CAR, "2026-09-15")).not.toBe(carView(data, CAR, "2026-09-15"));
+    const p = DEFAULT_PREFS;
+    expect(carView(data, CAR, "2026-09-15", p)).toBe(carView(data, CAR, "2026-09-15", p));
+    expect(carView(data, CAR, "2026-09-15", p)).not.toBe(carView(data, CAR, "2026-09-16", p));
+    expect(carView({ ...data }, CAR, "2026-09-15", p)).not.toBe(carView(data, CAR, "2026-09-15", p));
+    // Мова й одиниці змінюють тексти та пороги нагадувань, тож подання теж нове.
+    expect(carView(data, CAR, "2026-09-15", { ...p, unit: "mi" })).not.toBe(carView(data, CAR, "2026-09-15", p));
+    expect(carView(data, CAR, "2026-09-15", { ...p, lang: "uk" })).not.toBe(carView(data, CAR, "2026-09-15", p));
   });
 
   it("чужа машина в подання не потрапляє", () => {
-    const view = carView(data, "інша", "2026-09-15");
+    const view = carView(data, "інша", "2026-09-15", DEFAULT_PREFS);
     expect(view.service).toEqual([]);
     expect(view.summary.hasRecords).toBe(false);
   });
@@ -295,7 +303,7 @@ describe("файл .xlsx", () => {
   it("повна таблиця гаража відкривається без помилок", async () => {
     const data = { ...emptyData(), cars: [{ id: CAR, name: "Тест" }], service, fuel };
     const book = new ExcelJS.Workbook();
-    await book.xlsx.load(Buffer.from(buildXlsx(buildSheets(data, "2026-09-15"))) as unknown as ArrayBuffer);
-    expect(book.worksheets).toHaveLength(5);
+    await book.xlsx.load(Buffer.from(buildXlsx(buildSheets(data, "2026-09-15", "en"))) as unknown as ArrayBuffer);
+    expect(book.worksheets).toHaveLength(6);
   });
 });

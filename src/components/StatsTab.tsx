@@ -1,48 +1,46 @@
 import { useMemo } from "react";
 import { itemKindTotals, monthly } from "../../shared/calc";
-import { itemKindLabel } from "../../shared/constants";
-import { fmtDec1, fmtLiters1, fmtMoney0, fmtMonthKey, todayISO } from "../../shared/format";
-import { useCarView } from "../lib/store";
+import { categoryLabel, itemKindLabel } from "../../shared/constants";
+import { fmtConsumptionValue, fmtLiters1, fmtMoney0, fmtMonthKey, todayISO } from "../../shared/format";
+import { useCarView, useStore, useT } from "../lib/store";
 import { ConsumptionChart, MonthlyChart } from "./Charts";
 import { EmptyState, MoneyBars } from "./Ledger";
 
 export function StatsTab({ carId }: { carId: string }) {
+  const t = useT();
+  const unit = useStore((s) => s.prefs.unit);
   const { service, fuel, summary: s, fuelTotals: f } = useCarView(carId);
   const months = useMemo(() => monthly(service, fuel, todayISO()), [service, fuel]);
   const kinds = useMemo(() => itemKindTotals(service), [service]);
 
   if (!s.hasRecords) {
     return (
-      <EmptyState
-        narrow
-        title="Статистике пока не из чего строиться"
-        text="Добавь пару заправок и ремонтов — здесь появятся траты по месяцам и график расхода."
-      />
+      <EmptyState narrow title={t.stats.emptyTitle} text={t.stats.emptyText} />
     );
   }
 
   const money = [
-    ...(s.fuelTotal > 0 ? [{ name: "Топливо", sum: s.fuelTotal, fuel: true }] : []),
-    ...s.categories.map((c) => ({ name: c.name, sum: c.sum })),
+    ...(s.fuelTotal > 0 ? [{ key: "fuel", name: t.stats.fuel, sum: s.fuelTotal, fuel: true }] : []),
+    ...s.categories.map((c) => ({ key: `cat:${c.name}`, name: categoryLabel(c.name), sum: c.sum })),
   ].sort((a, b) => b.sum - a.sum);
   const hasItems = kinds.some((k) => k.kind !== "none");
 
   return (
     <div className="stats">
       <section className="sheet stat-sheet">
-        <h2 className="sheet-title">Траты по месяцам</h2>
+        <h2 className="sheet-title">{t.stats.monthly}</h2>
         <MonthlyChart rows={months} />
         <details className="chart-table">
-          <summary>Таблица</summary>
+          <summary>{t.stats.table}</summary>
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th scope="col">Месяц</th>
-                  <th scope="col">Обслуживание</th>
-                  <th scope="col">Топливо</th>
-                  <th scope="col">Всего</th>
-                  <th scope="col">Литров</th>
+                  <th scope="col">{t.stats.month}</th>
+                  <th scope="col">{t.stats.service}</th>
+                  <th scope="col">{t.stats.fuel}</th>
+                  <th scope="col">{t.stats.total}</th>
+                  <th scope="col">{t.stats.liters}</th>
                 </tr>
               </thead>
               <tbody>
@@ -63,28 +61,25 @@ export function StatsTab({ carId }: { carId: string }) {
 
       <section className="sheet stat-sheet">
         <div className="sheet-head">
-          <h2 className="sheet-title">Расход, л/100 км</h2>
-          {f.avg != null && <span className="muted num">среднее {fmtDec1(f.avg)}</span>}
+          <h2 className="sheet-title">{t.stats.consumption(t.units.per100Long[unit])}</h2>
+          {f.avg != null && <span className="muted num">{t.stats.avg(fmtConsumptionValue(f.avg))}</span>}
         </div>
-        {f.points.length > 0 ? (
-          <ConsumptionChart points={f.points} avg={f.avg} />
-        ) : (
-          <p className="muted">Нужно минимум две заправки «до полного».</p>
-        )}
+        {f.points.length > 0 ? <ConsumptionChart points={f.points} avg={f.avg} /> : <p className="muted">{t.stats.needTwo}</p>}
       </section>
 
       <div className="stats-stack">
         <section className="sheet stat-sheet">
-          <h2 className="sheet-title">Куда уходят деньги</h2>
+          <h2 className="sheet-title">{t.stats.whereMoney}</h2>
           <MoneyBars rows={money} total={s.total} />
         </section>
 
         {hasItems && (
           <section className="sheet stat-sheet">
-            <h2 className="sheet-title">Запчасти и работа</h2>
+            <h2 className="sheet-title">{t.stats.partsLabor}</h2>
             <MoneyBars
               rows={kinds.map((k) => ({
-                name: k.kind === "none" ? "Без разбивки" : itemKindLabel(k.kind),
+                key: k.kind,
+                name: k.kind === "none" ? t.stats.noBreakdown : itemKindLabel(k.kind),
                 sum: k.sum,
               }))}
               total={s.serviceTotal}

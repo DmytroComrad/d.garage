@@ -45,7 +45,15 @@ sql(
 );
 
 async function openPage(options, session) {
-  const ctx = await browser.newContext({ ...options, locale: "ru-RU", timezoneId: "Europe/Kyiv", acceptDownloads: true });
+  // Сценарій написаний російською: мову задаємо явно, бо за замовчуванням сайт англійською.
+  const storageState = { cookies: [], origins: [{ origin: BASE, localStorage: [{ name: "garage-ui", value: '{"lang":"ru"}' }] }] };
+  const ctx = await browser.newContext({
+    ...options,
+    locale: "ru-RU",
+    timezoneId: "Europe/Kyiv",
+    acceptDownloads: true,
+    storageState,
+  });
   await ctx.addCookies([
     { name: "__Host-session", value: session.token, domain: HOST, path: "/", secure: true, httpOnly: true, sameSite: "Lax" },
   ]);

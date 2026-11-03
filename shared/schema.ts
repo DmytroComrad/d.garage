@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { LIMITS } from "./constants";
-import { isIsoDate } from "./parse";
+import { isHttpUrl, isIsoDate } from "./parse";
 
 const id = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
 const isoDate = z.string().refine(isIsoDate);
@@ -60,6 +60,19 @@ export const reminderSchema = z
   })
   .refine((r) => r.dueOdo != null || r.dueDate != null);
 
+export const wishSchema = z.object({
+  id,
+  car: id,
+  title: z.string().trim().min(1).max(LIMITS.titleLength),
+  price: money.nullable(),
+  links: z.array(z.string().trim().refine(isHttpUrl)).max(LIMITS.linksPerWish).default([]),
+  note: z.string().trim().max(LIMITS.noteLength),
+  added: isoDate,
+  done: z.boolean(),
+  doneDate: isoDate.nullable(),
+  recordId: id.nullable(),
+});
+
 export const opSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("car.put"), data: carSchema }),
   z.object({ type: z.literal("car.del"), id }),
@@ -69,6 +82,8 @@ export const opSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("fuel.del"), id }),
   z.object({ type: z.literal("reminder.put"), data: reminderSchema }),
   z.object({ type: z.literal("reminder.del"), id }),
+  z.object({ type: z.literal("wish.put"), data: wishSchema }),
+  z.object({ type: z.literal("wish.del"), id }),
   z.object({ type: z.literal("demo.set"), value: z.boolean() }),
   z.object({ type: z.literal("all.del") }),
 ]);
@@ -85,6 +100,10 @@ export const registerSchema = z.object({
   password: passwordSchema,
   name: z.string().trim().max(LIMITS.personNameLength).default(""),
   turnstile: z.string().max(4096).nullish(),
+});
+
+export const sheetExportSchema = z.object({
+  dateFormat: z.enum(["dmy", "mdy", "ymd"]).default("dmy"),
 });
 
 export const loginSchema = z.object({

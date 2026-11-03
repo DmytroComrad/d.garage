@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { mergeBackup } from "../../shared/backup";
 import { carSummary, fuelSummary, sumMoney } from "../../shared/calc";
 import { emptyData } from "../../shared/ops";
+import { MESSAGES } from "../../shared/i18n";
 import {
-  SHEET_TITLES,
   buildSheets,
   dateToSerial,
   serialToDate,
@@ -15,6 +15,8 @@ import type { ServiceRecord } from "../../shared/types";
 import { CAR, fuel, partial, service } from "./fixtures";
 
 const today = "2026-09-15";
+// Таблиця російською: так її будували до появи інших мов, і старі таблиці мають читатися так само.
+const SHEET_TITLES = MESSAGES.ru.sheet.tabs;
 /** Контрольна сума: те, що показує сайт, дорівнює сумі рядків таблиці. */
 const sheetColumnTotal = (sheet: Sheet, title: string): number => {
   const i = sheet.columns.findIndex((c) => c.title === title);
@@ -39,7 +41,7 @@ const data = {
     { id: "r", car: CAR, title: "Масло", dueOdo: 340000, dueDate: "2027-01-01", done: false, doneDate: null, notified: 0 as const, recordId: "s3" },
   ],
 };
-const sheets = buildSheets(data, today);
+const sheets = buildSheets(data, today, "ru");
 const byTitle = (title: string) => {
   const found = sheets.find((s) => s.title === title);
   if (!found) throw new Error(title);

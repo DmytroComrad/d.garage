@@ -11,6 +11,7 @@ import { z } from "zod";
 import { burnPasswordCheck, hashPassword, randomToken, sha256, verifyPassword } from "./crypto";
 import { revokeGoogle } from "./google/connection";
 import { clientIp, limitAuth, readJson, verifyTurnstile } from "./guard";
+import { SENDER_NAME, mailText, requestLang } from "./messages";
 import { clearSessionCookie, createSession, requireUser } from "./session";
 import type { AuthResponse } from "../shared/types";
 import { ApiError, type AppEnv, type SessionUser } from "./types";
@@ -19,11 +20,11 @@ const now = () => Math.floor(Date.now() / 1000);
 const MAX_FAILED = 10;
 const LOCK_SECONDS = 15 * 60;
 const RESET_TTL = 60 * 60;
-const BAD_LOGIN = "Неверная почта или пароль.";
+const BAD_LOGIN = "badLogin";
 
 export const pepper = (c: Context<AppEnv>): string => {
   const value = c.env.PASSWORD_PEPPER;
-  if (!value) throw new ApiError(503, "Сервис настраивается. Попробуй позже.");
+  if (!value) throw new ApiError(503, "configuring");
   return value;
 };
 
@@ -43,7 +44,7 @@ auth.post("/register", async (c) => {
   await verifyTurnstile(c, body.turnstile);
 
   const exists = await c.env.DB.prepare("SELECT 1 FROM users WHERE email_key = ?").bind(body.email).first();
-  if (exists) throw new ApiError(409, "Такая почта уже зарегистрирована. Войди или восстанови пароль.");
+  if (exists) throw new ApiError(409, "emailTaken");
 
   const id = crypto.randomUUID();
   const hash = await hashPassword(body.password, pepper(c));
@@ -75,7 +76,7 @@ auth.post("/login", async (c) => {
     await burnPasswordCheck(body.password, pepper(c));
     throw new ApiError(401, BAD_LOGIN);
   }
-  if (user.locked_until > now()) throw new ApiError(429, "Слишком много неудачных попыток. Попробуй через 15 минут.");
+  if (user.locked_until > now()) throw new ApiError(429, "locked");
 
   const ok = await verifyPassword(body.password, user.password_hash, pepper(c));
   if (!ok) {
@@ -127,12 +128,14 @@ auth.post("/forgot", async (c) => {
       ),
     ]);
     const link = `${c.env.APP_URL}/?reset=${encodeURIComponent(token)}`;
+    // Лист мовою, якою людина просила скидання: іншої інформації про мову в нас немає.
+    const mail = mailText(requestLang(c));
     const sending = c.env.EMAIL.send({
       to: user.email,
-      from: { email: c.env.EMAIL_FROM, name: "Гараж Амедро" },
-      subject: "Восстановление пароля",
-      text: `Чтобы задать новый пароль, открой ссылку (действует час):\n${link}\n\nЕсли это был не ты, просто проигнорируй письмо.`,
-      html: `<p>Чтобы задать новый пароль, нажми на ссылку. Она действует час.</p><p><a href="${link}">Задать новый пароль</a></p><p>Если это был не ты, просто проигнорируй письмо.</p>`,
+      from: { email: c.env.EMAIL_FROM, name: SENDER_NAME },
+      subject: mail.subject,
+      text: mail.text(link),
+      html: mail.html(link),
     }).catch((err: unknown) => {
       console.error(JSON.stringify({ event: "reset_mail_failed", error: String(err) }));
     });
@@ -148,7 +151,7 @@ auth.post("/reset", async (c) => {
   const row = await c.env.DB.prepare("SELECT user_id, expires_at FROM password_resets WHERE token_hash = ?")
     .bind(tokenHash)
     .first<{ user_id: string; expires_at: number }>();
-  if (!row || row.expires_at < now()) throw new ApiError(400, "Ссылка устарела. Запроси новую.");
+  if (!row || row.expires_at < now()) throw new ApiError(400, "resetExpired");
 
   const hash = await hashPassword(body.password, pepper(c));
   await revokeGoogle(c.env, row.user_id).catch(() => undefined);
@@ -172,7 +175,7 @@ auth.post("/password", requireUser, async (c) => {
   const body = await readJson(c, changePasswordSchema);
   if (user.password_hash) {
     const ok = body.current ? await verifyPassword(body.current, user.password_hash, pepper(c)) : false;
-    if (!ok) throw new ApiError(400, "Текущий пароль неверный.");
+    if (!ok) throw new ApiError(400, "wrongCurrentPassword");
   }
   const hash = await hashPassword(body.next, pepper(c));
   await c.env.DB.batch([
@@ -194,9 +197,9 @@ auth.post("/delete-account", requireUser, async (c) => {
   const body = await readJson(c, z.object({ password: z.string().max(200).optional(), confirm: z.string().max(200).optional() }));
   if (user.password_hash) {
     const ok = body.password ? await verifyPassword(body.password, user.password_hash, pepper(c)) : false;
-    if (!ok) throw new ApiError(400, "Пароль неверный.");
+    if (!ok) throw new ApiError(400, "wrongPassword");
   } else if (body.confirm !== user.email) {
-    throw new ApiError(400, "Введи свою почту для подтверждения.");
+    throw new ApiError(400, "typeEmail");
   }
   await revokeGoogle(c.env, user.id).catch(() => undefined);
   // Каскад прибирає всі машини, записи, сесії та токени Google.

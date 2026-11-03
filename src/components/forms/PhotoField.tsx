@@ -1,7 +1,7 @@
 import { useMemo, useRef } from "react";
 import type { Photo } from "../../../shared/types";
 import { photoUrl } from "../../lib/photos";
-import { closeDialog, setTab, useStore } from "../../lib/store";
+import { closeDialog, setTab, useStore, useT } from "../../lib/store";
 import { CameraIcon, CloseIcon } from "../icons";
 
 /** Фото в записі: уже завантажені плюс вибрані, які підуть на Диск після збереження. */
@@ -14,6 +14,7 @@ export function PhotoField({
   pending: File[];
   onPending: (files: File[]) => void;
 }) {
+  const t = useT();
   const driveEnabled = useStore((s) => s.config.drive);
   const connected = useStore((s) => s.drive.connected);
   const input = useRef<HTMLInputElement>(null);
@@ -23,7 +24,7 @@ export function PhotoField({
 
   return (
     <div className="field">
-      <span className="field-label">Фото и скриншоты</span>
+      <span className="field-label">{t.photos.label}</span>
       {connected ? (
         <div className="photo-row">
           {existing.map((p) => (
@@ -35,14 +36,14 @@ export function PhotoField({
               <button
                 type="button"
                 className="photo-remove"
-                aria-label={`Убрать ${file.name}`}
+                aria-label={t.photos.remove(file.name)}
                 onClick={() => onPending(pending.filter((_, j) => j !== i))}
               >
                 <CloseIcon size={14} />
               </button>
             </span>
           ))}
-          <button type="button" className="photo-add" onClick={() => input.current?.click()} aria-label="Добавить фото">
+          <button type="button" className="photo-add" onClick={() => input.current?.click()} aria-label={t.photos.add}>
             <CameraIcon />
           </button>
           <input
@@ -59,7 +60,7 @@ export function PhotoField({
         </div>
       ) : (
         <span className="field-hint">
-          Фото хранятся на твоём Google Диске.{" "}
+          {t.photos.hint}{" "}
           <button
             type="button"
             className="link-btn"
@@ -68,7 +69,7 @@ export function PhotoField({
               setTab("data");
             }}
           >
-            Подключить Диск
+            {t.photos.connect}
           </button>
         </span>
       )}

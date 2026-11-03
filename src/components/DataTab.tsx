@@ -1,12 +1,23 @@
-import { useRef, useState } from "react";
-import { BACKUP_ERRORS, backupFileName, backupToText, buildBackup, parseBackupText } from "../../shared/backup";
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import { backupFileName, backupToText, buildBackup, parseBackupText } from "../../shared/backup";
 import { LIMITS } from "../../shared/constants";
-import { nameKey, todayISO } from "../../shared/format";
+import { fmtDateTime, nameKey, todayISO } from "../../shared/format";
 import { buildSheets } from "../../shared/sheet";
 import type { SheetExportResponse, SheetImportResponse } from "../../shared/types";
 import { HttpError, errorText, postJson } from "../lib/api";
 import { downloadFile } from "../lib/download";
-import { applyBackup, dispatch, flush, getState, openDialog, setDrive, toast, useStore } from "../lib/store";
+import {
+  applyBackup,
+  dispatch,
+  flush,
+  getState,
+  googleHref,
+  openDialog,
+  setDrive,
+  toast,
+  useStore,
+  useT,
+} from "../lib/store";
 
 const handleDriveError = (err: unknown): void => {
   if (err instanceof HttpError && err.code === "drive_disconnected") {
@@ -16,6 +27,7 @@ const handleDriveError = (err: unknown): void => {
 };
 
 function BackupCard() {
+  const t = useT();
   const data = useStore((s) => s.data);
   const activeCar = useStore((s) => s.data.cars.find((c) => c.id === s.active));
   const today = todayISO();
@@ -23,7 +35,7 @@ function BackupCard() {
   const copy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      toast("Скопировано");
+      toast(t.common.copied);
     } catch {
       openDialog({ type: "copy", text });
     }
@@ -31,21 +43,18 @@ function BackupCard() {
 
   return (
     <section className="sheet data-sheet">
-      <h2 className="sheet-title">Файл-бэкап</h2>
-      <p className="muted">
-        Текстовый файл со всеми записями. Хранить его не обязательно, но он пригодится, чтобы перенести гараж или
-        передать машину другу.
-      </p>
+      <h2 className="sheet-title">{t.data.backupTitle}</h2>
+      <p className="muted">{t.data.backupText}</p>
       <div className="btn-row">
         <button
           type="button"
           className="btn btn-ink"
           onClick={() => {
             downloadFile(backupFileName(today), backupToText(buildBackup(data)), "text/plain;charset=utf-8");
-            toast("Файл сохранён");
+            toast(t.common.fileSaved);
           }}
         >
-          Скачать весь гараж
+          {t.data.downloadAll}
         </button>
         {activeCar && (
           <button
@@ -57,68 +66,118 @@ function BackupCard() {
                 backupToText(buildBackup(data, activeCar.id)),
                 "text/plain;charset=utf-8",
               );
-              toast("Файл сохранён");
+              toast(t.common.fileSaved);
             }}
           >
-            Только «{activeCar.name}»
+            {t.data.onlyCar(activeCar.name)}
           </button>
         )}
         <button type="button" className="btn btn-quiet" onClick={() => void copy(backupToText(buildBackup(data)))}>
-          Скопировать весь гараж
+          {t.data.copyAll}
         </button>
       </div>
     </section>
   );
 }
 
+const hasFiles = (e: DragEvent): boolean => e.dataTransfer.types.includes("Files");
+
+/** Бекап можна вибрати кнопкою, перетягнути файлом на картку або вставити текстом. */
 function RestoreCard() {
+  const t = useT();
   const [text, setText] = useState("");
   const [message, setMessage] = useState<{ text: string; bad: boolean } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const depth = useRef(0);
   const file = useRef<HTMLInputElement>(null);
+
+  // Файл, кинутий повз картку, браузер відкрив би замість сайту: на цій вкладці такого не буває.
+  useEffect(() => {
+    const block = (e: globalThis.DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    window.addEventListener("dragover", block);
+    window.addEventListener("drop", block);
+    return () => {
+      window.removeEventListener("dragover", block);
+      window.removeEventListener("drop", block);
+    };
+  }, []);
 
   const restore = (raw: string) => {
     const parsed = parseBackupText(raw);
     if (!parsed.ok) {
-      setMessage({ text: parsed.error, bad: true });
+      setMessage({ text: parsed.error === "corrupted" ? t.data.errCorrupted : t.data.errNotBackup, bad: true });
       return;
     }
-    setMessage({ text: applyBackup(parsed.backup), bad: false });
+    const result = applyBackup(parsed.backup);
+    setMessage({ text: t.data.result(result.added, result.skipped), bad: false });
     setText("");
   };
 
+  const readFile = async (picked: File | undefined) => {
+    if (!picked) return;
+    try {
+      restore(await picked.text());
+    } catch {
+      setMessage({ text: t.data.errFile, bad: true });
+    }
+  };
+
   return (
-    <section className="sheet data-sheet">
-      <h2 className="sheet-title">Восстановить из бэкапа</h2>
-      <p className="muted">Записи добавятся к тем, что уже есть. Повторы пропускаются.</p>
-      <div className="btn-row">
+    <section
+      className={`sheet data-sheet dropzone${dragging ? " is-drag" : ""}`}
+      onDragEnter={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        depth.current += 1;
+        setDragging(true);
+      }}
+      onDragOver={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(e) => {
+        if (!hasFiles(e)) return;
+        depth.current = Math.max(0, depth.current - 1);
+        if (!depth.current) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        depth.current = 0;
+        setDragging(false);
+        void readFile(e.dataTransfer.files[0]);
+      }}
+    >
+      <h2 className="sheet-title">{t.data.restoreTitle}</h2>
+      <p className="muted">{t.data.restoreText}</p>
+      <div className="drop-area">
+        <span className="drop-hint">{t.data.dropHint}</span>
         <button type="button" className="btn btn-ink" onClick={() => file.current?.click()}>
-          Из файла бэкапа…
+          {t.data.pick}
         </button>
         <input
           ref={file}
           type="file"
           accept=".txt,.json,text/plain,application/json"
           hidden
-          aria-label="Файл бэкапа"
-          onChange={async (e) => {
+          aria-label={t.data.fileInput}
+          onChange={(e) => {
             const picked = e.target.files?.[0];
             e.target.value = "";
-            if (!picked) return;
-            try {
-              restore(await picked.text());
-            } catch {
-              setMessage({ text: BACKUP_ERRORS.file, bad: true });
-            }
+            void readFile(picked);
           }}
         />
       </div>
       <label className="field">
-        <span className="field-label">Или вставь текст бэкапа</span>
+        <span className="field-label">{t.data.pasteLabel}</span>
         <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
       </label>
       <div className="btn-row">
         <button type="button" className="btn btn-quiet" disabled={!text.trim()} onClick={() => restore(text)}>
-          Загрузить
+          {t.data.load}
         </button>
       </div>
       {message && (
@@ -126,14 +185,21 @@ function RestoreCard() {
           {message.text}
         </p>
       )}
+      {dragging && (
+        <div className="drop-overlay" aria-hidden="true">
+          {t.data.dropNow}
+        </div>
+      )}
     </section>
   );
 }
 
 function SheetCard() {
+  const t = useT();
   const data = useStore((s) => s.data);
   const drive = useStore((s) => s.drive);
   const driveEnabled = useStore((s) => s.config.drive);
+  const prefs = useStore((s) => s.prefs);
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [message, setMessage] = useState("");
 
@@ -142,9 +208,9 @@ function SheetCard() {
     setMessage("");
     try {
       await flush();
-      const res = await postJson<SheetExportResponse>("/api/google/sheet/export");
+      const res = await postJson<SheetExportResponse>("/api/google/sheet/export", { dateFormat: prefs.dateFormat });
       setDrive({ ...getState().drive, sheetUrl: res.url, sheetExportedAt: res.exportedAt });
-      toast("Таблица обновлена");
+      toast(t.data.sheetUpdated);
     } catch (err) {
       handleDriveError(err);
     } finally {
@@ -158,7 +224,8 @@ function SheetCard() {
     try {
       await flush();
       const res = await postJson<SheetImportResponse>("/api/google/sheet/import");
-      setMessage(applyBackup(res.backup));
+      const result = applyBackup(res.backup);
+      setMessage(t.data.result(result.added, result.skipped));
     } catch (err) {
       handleDriveError(err);
     } finally {
@@ -169,42 +236,37 @@ function SheetCard() {
   const downloadXlsx = async () => {
     const { buildXlsx } = await import("../lib/xlsx");
     const today = todayISO();
-    const bytes = buildXlsx(buildSheets(data, today));
+    const bytes = buildXlsx(buildSheets(data, today, prefs.lang), prefs.dateFormat);
     downloadFile(
-      `garage-${today}.xlsx`,
+      `d-garage-${today}.xlsx`,
       new Uint8Array(bytes),
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
-    toast("Файл сохранён");
+    toast(t.common.fileSaved);
   };
 
   return (
     <section className="sheet data-sheet">
-      <h2 className="sheet-title">Таблица</h2>
-      <p className="muted">
-        Все числа считает сам сайт и записывает готовыми значениями, без формул. Поэтому суммы и расход в таблице
-        совпадают с сайтом до копейки, какой бы ни была локаль таблицы.
-      </p>
+      <h2 className="sheet-title">{t.data.sheetTitle}</h2>
+      <p className="muted">{t.data.sheetText}</p>
       {driveEnabled && drive.connected && (
         <>
           <div className="btn-row">
             <button type="button" className="btn btn-ink" disabled={busy !== null} onClick={() => void exportSheet()}>
-              {busy === "export" ? "Обновляю…" : drive.sheetUrl ? "Обновить Google Таблицу" : "Создать Google Таблицу"}
+              {busy === "export" ? t.data.updating : drive.sheetUrl ? t.data.update : t.data.create}
             </button>
             {drive.sheetUrl && (
               <a className="btn btn-quiet" href={drive.sheetUrl} target="_blank" rel="noreferrer">
-                Открыть таблицу
+                {t.data.open}
               </a>
             )}
             {drive.sheetUrl && (
               <button type="button" className="btn btn-quiet" disabled={busy !== null} onClick={() => void importSheet()}>
-                {busy === "import" ? "Загружаю…" : "Восстановить из таблицы"}
+                {busy === "import" ? t.data.loading : t.data.restoreSheet}
               </button>
             )}
           </div>
-          {drive.sheetExportedAt && (
-            <p className="muted">Обновлена {new Date(drive.sheetExportedAt * 1000).toLocaleString("ru-RU")}</p>
-          )}
+          {drive.sheetExportedAt && <p className="muted">{t.data.updatedAt(fmtDateTime(drive.sheetExportedAt))}</p>}
           {message && (
             <p className="form-ok" role="status">
               {message}
@@ -214,7 +276,7 @@ function SheetCard() {
       )}
       <div className="btn-row">
         <button type="button" className="btn btn-quiet" onClick={() => void downloadXlsx()}>
-          Скачать таблицу .xlsx
+          {t.data.xlsx}
         </button>
       </div>
     </section>
@@ -222,6 +284,7 @@ function SheetCard() {
 }
 
 function DriveCard() {
+  const t = useT();
   const drive = useStore((s) => s.drive);
   const driveEnabled = useStore((s) => s.config.drive);
   const [asking, setAsking] = useState(false);
@@ -231,25 +294,22 @@ function DriveCard() {
     try {
       await postJson("/api/google/drive/disconnect");
       setDrive({ connected: false, email: null, sheetUrl: null, sheetExportedAt: null });
-      toast("Google Диск отключён");
+      toast(t.data.disconnected);
     } catch (err) {
       toast(errorText(err));
     }
     setAsking(false);
   };
 
+  const folders = t.driveFolders;
   return (
     <section className="sheet data-sheet">
-      <h2 className="sheet-title">Google Диск</h2>
-      <p className="muted">
-        Фото и скриншоты хранятся в твоей папке «Гараж Амедро», а в базе сайта только ссылки на них. Сайт видит лишь
-        файлы, которые создал сам, а остальной Диск ему недоступен. Отозвать доступ можно здесь или в настройках
-        аккаунта Google.
-      </p>
+      <h2 className="sheet-title">{t.data.driveTitle}</h2>
+      <p className="muted">{t.data.driveText(folders.root, folders.gallery, folders.records)}</p>
       {drive.connected ? (
         <>
           <p>
-            Подключён
+            {t.data.connected}
             {drive.email ? (
               <>
                 : <b>{drive.email}</b>
@@ -258,25 +318,25 @@ function DriveCard() {
           </p>
           {asking ? (
             <div className="confirm-block">
-              <p>Файлы останутся на твоём Диске, но на сайте фото перестанут открываться, пока Диск снова не подключён.</p>
+              <p>{t.data.disconnectText}</p>
               <div className="btn-row">
                 <button type="button" className="btn btn-danger" onClick={() => void disconnect()}>
-                  Да, отключить
+                  {t.data.yesDisconnect}
                 </button>
                 <button type="button" className="btn btn-quiet" onClick={() => setAsking(false)}>
-                  Отмена
+                  {t.common.cancel}
                 </button>
               </div>
             </div>
           ) : (
             <button type="button" className="btn btn-quiet" onClick={() => setAsking(true)}>
-              Отключить Диск
+              {t.data.disconnect}
             </button>
           )}
         </>
       ) : (
-        <a className="btn btn-ink" href="/api/google/drive/connect">
-          Подключить Google Диск
+        <a className="btn btn-ink" href={googleHref("/api/google/drive/connect")}>
+          {t.data.connect}
         </a>
       )}
     </section>
@@ -284,6 +344,7 @@ function DriveCard() {
 }
 
 function CarRow({ id, name }: { id: string; name: string }) {
+  const t = useT();
   const cars = useStore((s) => s.data.cars);
   const [value, setValue] = useState(name);
   const [asking, setAsking] = useState(false);
@@ -291,24 +352,24 @@ function CarRow({ id, name }: { id: string; name: string }) {
 
   const save = () => {
     const next = value.trim();
-    if (!next) return setError("Напиши название.");
-    if (cars.some((c) => c.id !== id && nameKey(c.name) === nameKey(next))) return setError("Такая машина уже есть.");
+    if (!next) return setError(t.carForm.nameEmpty);
+    if (cars.some((c) => c.id !== id && nameKey(c.name) === nameKey(next))) return setError(t.carForm.duplicate);
     setError("");
     dispatch({ type: "car.put", data: { id, name: next } });
-    toast("Сохранено");
+    toast(t.common.saved);
   };
 
   return (
     <li className="car-row">
       <input
-        aria-label="Название машины"
+        aria-label={t.data.carName}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         maxLength={LIMITS.carNameLength}
       />
       <div className="btn-row">
         <button type="button" className="btn btn-quiet btn-small" disabled={value.trim() === name} onClick={save}>
-          Сохранить
+          {t.common.save}
         </button>
         {asking ? (
           <button
@@ -316,14 +377,14 @@ function CarRow({ id, name }: { id: string; name: string }) {
             className="btn btn-danger btn-small"
             onClick={() => {
               dispatch({ type: "car.del", id });
-              toast("Машина удалена");
+              toast(t.data.carDeleted);
             }}
           >
-            Удалить машину и все её записи
+            {t.data.deleteCar}
           </button>
         ) : (
           <button type="button" className="btn btn-danger-quiet btn-small" onClick={() => setAsking(true)}>
-            Удалить
+            {t.common.delete}
           </button>
         )}
       </div>
@@ -337,29 +398,31 @@ function CarRow({ id, name }: { id: string; name: string }) {
 }
 
 function CarsCard() {
+  const t = useT();
   const cars = useStore((s) => s.data.cars);
   return (
     <section className="sheet data-sheet">
-      <h2 className="sheet-title">Машины и настройки</h2>
+      <h2 className="sheet-title">{t.data.carsTitle}</h2>
       <ul className="car-rows">
         {cars.map((c) => (
           <CarRow key={c.id} id={c.id} name={c.name} />
         ))}
       </ul>
       <button type="button" className="btn btn-quiet" onClick={() => openDialog({ type: "car" })}>
-        Добавить машину
+        {t.data.addCar}
       </button>
     </section>
   );
 }
 
 function WipeCard() {
+  const t = useT();
   const [asking, setAsking] = useState(false);
   return (
     <section className="data-wipe">
       {asking ? (
         <div className="confirm-block">
-          <p>Все машины и записи исчезнут из аккаунта на всех устройствах. Файлы на Google Диске останутся.</p>
+          <p>{t.data.wipeText}</p>
           <div className="btn-row">
             <button
               type="button"
@@ -367,19 +430,19 @@ function WipeCard() {
               onClick={() => {
                 dispatch({ type: "all.del" });
                 setAsking(false);
-                toast("Все данные стёрты");
+                toast(t.data.wiped);
               }}
             >
-              Да, стереть
+              {t.data.wipeYes}
             </button>
             <button type="button" className="btn btn-quiet" onClick={() => setAsking(false)}>
-              Отмена
+              {t.common.cancel}
             </button>
           </div>
         </div>
       ) : (
         <button type="button" className="btn btn-danger-quiet" onClick={() => setAsking(true)}>
-          Стереть все данные
+          {t.data.wipe}
         </button>
       )}
     </section>
@@ -387,14 +450,12 @@ function WipeCard() {
 }
 
 export function DataTab() {
+  const t = useT();
   return (
     <div className="data">
       <section className="sheet data-sheet">
-        <h2 className="sheet-title">Где хранятся записи</h2>
-        <p className="muted">
-          В твоём аккаунте на сервере сайта. Заходи с любого устройства: бэкапы делать не обязательно. Без интернета
-          записи тоже сохраняются и отправляются сами, когда связь появится.
-        </p>
+        <h2 className="sheet-title">{t.data.whereTitle}</h2>
+        <p className="muted">{t.data.whereText}</p>
       </section>
       <BackupCard />
       <RestoreCard />

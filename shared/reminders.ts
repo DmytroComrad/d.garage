@@ -1,10 +1,24 @@
 import { LIMITS } from "./constants";
-import { fmtNum, plural } from "./format";
+import { fmtDist, fmtNum } from "./format";
+import { messages } from "./i18n";
 import { parseOdo } from "./parse";
+import { fromKm, prefs, toKm, type Unit } from "./prefs";
 import type { Reminder, ReminderLevel } from "./types";
 
-export const KM_THRESHOLDS = { first: 1000, second: 500 } as const;
+/** Пороги сповіщень у вибраних одиницях: круглі числа і для кілометрів, і для миль. */
+export const DIST_THRESHOLDS: Record<Unit, { first: number; second: number }> = {
+  km: { first: 1000, second: 500 },
+  mi: { first: 600, second: 300 },
+};
 export const DAY_THRESHOLDS = { first: 30, second: 7 } as const;
+
+/** Пресети «нагадати через» у вибраних одиницях. */
+export const DIST_PRESETS: Record<Unit, number[]> = { km: [5000, 10000, 15000], mi: [3000, 5000, 10000] };
+
+const kmThresholds = (unit: Unit = prefs().unit) => ({
+  first: toKm(DIST_THRESHOLDS[unit].first, unit),
+  second: toKm(DIST_THRESHOLDS[unit].second, unit),
+});
 
 const DAY_MS = 86_400_000;
 
@@ -23,17 +37,17 @@ export type ReminderStatus = {
   level: ReminderLevel;
   kmLeft: number | null;
   daysLeft: number | null;
-  /** "Через 480 км", "Просрочено на 120 км", "Через 3 дня", "Сегодня". */
+  /** "Через 480 км", "Просрочено на 120 км", "Через 3 дня", "Сегодня" — мовою інтерфейсу. */
   when: string;
 };
 
-const levelForKm = (km: number): ReminderLevel =>
-  km <= 0 ? 3 : km <= KM_THRESHOLDS.second ? 2 : km <= KM_THRESHOLDS.first ? 1 : 0;
+const levelForKm = (km: number): ReminderLevel => {
+  const t = kmThresholds();
+  return km <= 0 ? 3 : km <= t.second ? 2 : km <= t.first ? 1 : 0;
+};
 
 const levelForDays = (days: number): ReminderLevel =>
   days <= 0 ? 3 : days <= DAY_THRESHOLDS.second ? 2 : days <= DAY_THRESHOLDS.first ? 1 : 0;
-
-const dayWord = (n: number): string => `${fmtNum(n)} ${plural(n, ["день", "дня", "дней"])}`;
 
 export function reminderStatus(
   rem: Pick<Reminder, "dueOdo" | "dueDate">,
@@ -48,35 +62,27 @@ export function reminderStatus(
   if (daysLeft != null) levels.push(levelForDays(daysLeft));
   const level = (levels.length ? Math.max(...levels) : 0) as ReminderLevel;
 
+  const t = messages().reminderStatus;
   const parts: string[] = [];
   if (kmLeft != null) {
-    parts.push(
-      kmLeft > 0
-        ? `Через ${fmtNum(kmLeft)} км`
-        : kmLeft === 0
-          ? "Пора по пробегу"
-          : `Просрочено на ${fmtNum(-kmLeft)} км`,
-    );
+    // Округлення до миль може дати «через 0 миль»: тоді вже час.
+    const left = fromKm(Math.abs(kmLeft));
+    parts.push(kmLeft === 0 || left === 0 ? t.kmNow : kmLeft > 0 ? t.kmAhead(fmtDist(kmLeft)) : t.kmOver(fmtDist(-kmLeft)));
   }
   if (daysLeft != null) {
     const first = parts.length === 0;
+    const n = Math.abs(daysLeft);
     parts.push(
-      daysLeft > 0
-        ? `${first ? "Через" : "через"} ${dayWord(daysLeft)}`
-        : daysLeft === 0
-          ? first
-            ? "Сегодня"
-            : "сегодня"
-          : `${first ? "Просрочено" : "просрочено"} на ${dayWord(-daysLeft)}`,
+      daysLeft > 0 ? t.daysAhead(fmtNum(n), n, first) : daysLeft === 0 ? t.today(first) : t.daysOver(fmtNum(n), n, first),
     );
   }
 
-  return { level, kmLeft, daysLeft, when: parts.join(" или ") || "Срок пока не посчитать" };
+  return { level, kmLeft, daysLeft, when: parts.join(t.or) || t.unknown };
 }
 
 /** Текст сповіщення, напр. "Через 480 км — замена масла". */
 export const reminderText = (status: ReminderStatus, title: string): string => {
-  const lowered = title ? title[0].toLocaleLowerCase("ru-RU") + title.slice(1) : "";
+  const lowered = title ? title[0].toLocaleLowerCase() + title.slice(1) : "";
   return lowered ? `${status.when} — ${lowered}` : status.when;
 };
 
@@ -138,10 +144,11 @@ export function notifiedLevel(
 
 export type ReminderDraft = { on: boolean; title: string; km: string; date: string };
 
+/** `km` у чернетці — відстань у вибраних одиницях, як її бачить і вводить людина. */
 export const reminderDraft = (linked: Reminder | undefined, baseOdo: number | null): ReminderDraft => ({
   on: Boolean(linked),
   title: linked?.title ?? "",
-  km: linked?.dueOdo != null && baseOdo != null ? String(Math.max(0, linked.dueOdo - baseOdo)) : "",
+  km: linked?.dueOdo != null && baseOdo != null ? String(fromKm(Math.max(0, linked.dueOdo - baseOdo))) : "",
   date: linked?.dueDate ?? "",
 });
 
@@ -161,11 +168,13 @@ export function buildReminder(
   opts: BuildReminderOptions,
 ): { error: string } | { reminder: Reminder | null } {
   if (!draft.on) return { reminder: null };
-  const km = parseOdo(draft.km);
-  if (km === "invalid") return { error: "В напоминании километры — только цифры." };
+  const t = messages().reminderFields;
+  const parsed = parseOdo(draft.km);
+  if (parsed === "invalid") return { error: t.errDigits };
+  const km = parsed ? toKm(parsed) : parsed;
   const date = draft.date || null;
-  if (!km && !date) return { error: "Укажи, через сколько километров или к какой дате напомнить." };
-  if (km && opts.baseOdo == null) return { error: "Чтобы считать километры, укажи пробег этой записи." };
+  if (!km && !date) return { error: t.errNeedOne };
+  if (km && opts.baseOdo == null) return { error: t.errNeedOdo };
   const dueOdo = km && opts.baseOdo != null ? opts.baseOdo + km : null;
   const due = { dueOdo, dueDate: date };
   return {

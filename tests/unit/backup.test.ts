@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BACKUP_ERRORS, backupFileName, backupToText, buildBackup, mergeBackup, parseBackupText } from "../../shared/backup";
+import { backupFileName, backupToText, buildBackup, mergeBackup, parseBackupText } from "../../shared/backup";
 import { emptyData } from "../../shared/ops";
 import { CAR, fuel, service } from "./fixtures";
 
@@ -9,8 +9,8 @@ const nextId = () => `id${++counter}`;
 
 describe("файл бекапу", () => {
   it("зберігається в .txt", () => {
-    expect(backupFileName("2026-09-15")).toBe("garage-backup-2026-09-15.txt");
-    expect(backupFileName("2026-09-15", "Моя машина")).toBe("garage-backup-Моя-машина-2026-09-15.txt");
+    expect(backupFileName("2026-09-15")).toBe("d-garage-backup-2026-09-15.txt");
+    expect(backupFileName("2026-09-15", "Моя машина")).toBe("d-garage-backup-Моя-машина-2026-09-15.txt");
   });
 
   it("читається назад із тексту, навіть з BOM", () => {
@@ -20,8 +20,8 @@ describe("файл бекапу", () => {
   });
 
   it("помилки з тз", () => {
-    expect(parseBackupText("{обрізано")).toEqual({ ok: false, error: BACKUP_ERRORS.corrupted });
-    expect(parseBackupText('{"a":1}')).toEqual({ ok: false, error: BACKUP_ERRORS.notBackup });
+    expect(parseBackupText("{обрізано")).toEqual({ ok: false, error: "corrupted" });
+    expect(parseBackupText('{"a":1}')).toEqual({ ok: false, error: "notBackup" });
   });
 
   it("лише одна машина", () => {

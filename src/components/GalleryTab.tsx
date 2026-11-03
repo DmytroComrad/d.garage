@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { photoUrl, uploadPhotos } from "../lib/photos";
-import { openDialog, setTab, useCarView, useStore } from "../lib/store";
+import { googleHref, openDialog, setTab, useCarView, useStore, useT } from "../lib/store";
 import { CameraIcon } from "./icons";
 import { EmptyState } from "./Ledger";
 
 export function GalleryTab({ carId }: { carId: string }) {
+  const t = useT();
   const connected = useStore((s) => s.drive.connected);
   const driveEnabled = useStore((s) => s.config.drive);
   const uploading = useStore((s) => s.uploading);
@@ -15,27 +16,17 @@ export function GalleryTab({ carId }: { carId: string }) {
   const shots = photos.filter((p) => p.kind === "record").length;
 
   if (!driveEnabled) {
-    return (
-      <EmptyState
-        narrow
-        title="Галерея пока недоступна"
-        text="Фото будут храниться на твоём Google Диске. Подключение появится здесь, как только его настроят на сайте."
-      />
-    );
+    return <EmptyState narrow title={t.gallery.unavailableTitle} text={t.gallery.unavailableText} />;
   }
 
   if (!connected) {
     return (
-      <EmptyState
-        narrow
-        title="Подключи Google Диск"
-        text="Фото машины и скриншоты чеков будут лежать в отдельной папке на твоём Диске. Сайт получает доступ только к тем файлам, которые загрузил сам: остальное на Диске он не видит."
-      >
-        <a className="btn btn-ink" href="/api/google/drive/connect">
-          Подключить Google Диск
+      <EmptyState narrow title={t.gallery.connectTitle} text={t.gallery.connectText}>
+        <a className="btn btn-ink" href={googleHref("/api/google/drive/connect")}>
+          {t.gallery.connect}
         </a>
         <button type="button" className="link-btn" onClick={() => setTab("data")}>
-          Подробнее на вкладке «Данные»
+          {t.gallery.more}
         </button>
       </EmptyState>
     );
@@ -44,14 +35,14 @@ export function GalleryTab({ carId }: { carId: string }) {
   return (
     <div>
       <div className="section-head">
-        <div className="segmented" role="group" aria-label="Что показать">
+        <div className="segmented" role="group" aria-label={t.gallery.viewAria}>
           <button
             type="button"
             className={view === "gallery" ? "is-on" : ""}
             aria-pressed={view === "gallery"}
             onClick={() => setView("gallery")}
           >
-            Галерея
+            {t.gallery.gallery}
           </button>
           <button
             type="button"
@@ -59,13 +50,13 @@ export function GalleryTab({ carId }: { carId: string }) {
             aria-pressed={view === "record"}
             onClick={() => setView("record")}
           >
-            Из записей{shots ? ` (${shots})` : ""}
+            {t.gallery.fromRecords(shots)}
           </button>
         </div>
         {view === "gallery" && (
           <>
             <button type="button" className="btn btn-ink" disabled={uploading > 0} onClick={() => input.current?.click()}>
-              <CameraIcon size={18} /> {uploading > 0 ? `Загружаю: ${uploading}` : "Добавить фото"}
+              <CameraIcon size={18} /> {uploading > 0 ? t.gallery.uploading(uploading) : t.gallery.add}
             </button>
             <input
               ref={input}
@@ -85,11 +76,11 @@ export function GalleryTab({ carId }: { carId: string }) {
 
       {list.length === 0 ? (
         <EmptyState
-          title={view === "gallery" ? "Фото пока нет" : "В записях пока нет фото"}
+          title={view === "gallery" ? t.gallery.emptyGalleryTitle : t.gallery.emptyRecordsTitle}
           text={
             view === "gallery"
-              ? "Добавь первое фото машины: оно сохранится в папку «Галерея» на твоём Google Диске."
-              : "Прикрепляй чеки и заказ-наряды прямо в форме записи: они попадут в папку «Скриншоты»."
+              ? t.gallery.emptyGalleryText(t.driveFolders.gallery)
+              : t.gallery.emptyRecordsText(t.driveFolders.records)
           }
         />
       ) : (
@@ -99,7 +90,7 @@ export function GalleryTab({ carId }: { carId: string }) {
               key={p.id}
               type="button"
               className="photo-tile"
-              aria-label={`Открыть фото ${p.name}`}
+              aria-label={t.gallery.openPhoto(p.name)}
               onClick={() => openDialog({ type: "lightbox", photos: list, index: i })}
             >
               <img

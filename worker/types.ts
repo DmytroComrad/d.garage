@@ -1,3 +1,5 @@
+import type { ErrorKey } from "./messages";
+
 /** Секрети задаються через `wrangler secret put`, а локально — через .dev.vars. Будь-якого з них може не бути. */
 export type Secrets = {
   PASSWORD_PEPPER?: string;
@@ -35,6 +37,7 @@ export type SessionUser = {
   service_count: number;
   fuel_count: number;
   reminders_count: number;
+  wishes_count: number;
   photos_count: number;
 };
 
@@ -43,12 +46,13 @@ export type AppEnv = {
   Variables: { user: SessionUser; sessionHash: string };
 };
 
+/** Помилка для клієнта. Текст обирається при відповіді мовою запиту, тож тут лише ключ. */
 export class ApiError extends Error {
   constructor(
     public status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 429 | 502 | 503,
-    message: string,
+    public key: ErrorKey,
     public code?: string,
   ) {
-    super(message);
+    super(key);
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Гараж Амедро.
+ * D.Garage.
  * Кольори й шрифти задані специфікацією. Характер дає одне: механічний одометр.
  * Решта тиха: аркуші журналу замість карток, панель приладів замість плиток.
  */
@@ -475,6 +475,7 @@ td,
 /* Вход */
 
 .auth {
+  position: relative;
   max-width: 1000px;
   margin: 0 auto;
   min-height: 100dvh;
@@ -2013,6 +2014,399 @@ input[type="date"] {
   display: none;
 }
 
+/* Язык: флаг и код рядом с профилем, меню выпадает вниз */
+
+.lang {
+  position: relative;
+  flex: none;
+}
+
+.lang-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.lang-btn:hover,
+.lang-btn[aria-expanded="true"] {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.flag {
+  flex: none;
+  display: block;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+
+.lang-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 210px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.16);
+}
+
+.lang-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 7px;
+  text-align: left;
+}
+
+.lang-menu button:hover,
+.lang-menu button:focus-visible {
+  background: var(--surface-2);
+}
+
+.lang-menu button span {
+  flex: 1;
+}
+
+.lang-menu button[aria-checked="true"] {
+  font-weight: 600;
+}
+
+.auth-lang {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: var(--gutter-r);
+  z-index: 5;
+}
+
+/* Выбор записей для удаления */
+
+.list-tools {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 34px;
+}
+
+.list-tools .muted {
+  font-size: 14px;
+}
+
+.rec-check {
+  border: 2px solid var(--line);
+  color: var(--surface);
+  background: var(--surface);
+}
+
+.rec-check.is-on {
+  border-color: var(--bad);
+  background: var(--bad);
+}
+
+.rec.is-picked,
+.rec.is-picked .rec-main {
+  background: var(--bad-soft);
+}
+
+/* Тост не перекрывает панель выбора. */
+body:has(.select-bar) .toast-host {
+  bottom: calc(90px + env(safe-area-inset-bottom));
+}
+
+.rec.is-stale .rec-title {
+  color: var(--ink-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--bad);
+}
+
+.tag-bad {
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-weight: 500;
+}
+
+.tag-link {
+  cursor: pointer;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.select-bar {
+  position: sticky;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sheet);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.14);
+}
+
+.select-count {
+  font-weight: 600;
+}
+
+.select-question {
+  font-weight: 500;
+  color: var(--bad);
+}
+
+/* Неактуальные записи из хотелок */
+
+.stale {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--r-sheet);
+  background: var(--bad-soft);
+  border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
+}
+
+.stale-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--bad);
+}
+
+.stale-icon {
+  display: inline-grid;
+}
+
+.stale-list {
+  display: grid;
+  gap: 4px;
+}
+
+.stale-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.stale-list .link-btn {
+  color: var(--ink);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+/* Хотелки */
+
+.wish-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 10px;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.wish {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+}
+
+.wish + .wish {
+  border-top: 1px solid var(--line);
+}
+
+.wish-check {
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  display: inline-grid;
+  place-items: center;
+  border: 2px solid var(--ink-3);
+  border-radius: 6px;
+  background: var(--surface);
+  color: #fff;
+}
+
+.wish-check:hover {
+  border-color: var(--good);
+}
+
+.wish-check.is-on {
+  border-color: var(--good);
+  background: var(--good);
+}
+
+.wish-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wish-main {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  min-width: 0;
+}
+
+.wish-title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.wish.is-done .wish-title {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+.wish-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wish-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--service-soft);
+  color: var(--service);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.wish-links a span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wish-side {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.wish-price {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.wish.is-done .wish-price {
+  color: var(--ink-3);
+}
+
+.link-list {
+  display: grid;
+  gap: 6px;
+}
+
+.link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.dialog-text {
+  margin-bottom: 16px;
+}
+
+/* Как работают напоминания */
+
+.note {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--r-control);
+  background: var(--service-soft);
+  font-size: 14px;
+}
+
+.note-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--service);
+}
+
+.note-title strong {
+  color: var(--ink);
+}
+
+.note-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  font-size: 14px;
+}
+
+.note-slot {
+  display: grid;
+  margin-bottom: 14px;
+}
+
+/* Перетаскивание файла бэкапа */
+
+.dropzone {
+  position: relative;
+}
+
+.drop-area {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 14px;
+  border: 1.5px dashed var(--ink-3);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+}
+
+.drop-hint {
+  flex: 1 1 200px;
+  color: var(--ink-2);
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  text-align: center;
+  border: 2px dashed var(--service);
+  border-radius: var(--r-sheet);
+  background: color-mix(in srgb, var(--service-soft) 92%, transparent);
+  color: var(--service);
+  font-weight: 600;
+  font-size: 17px;
+  pointer-events: none;
+}
+
 /* Адаптивность */
 
 @media (max-width: 900px) {
@@ -2096,6 +2490,15 @@ input[type="date"] {
   .toast-host {
     bottom: calc(74px + env(safe-area-inset-bottom));
   }
+
+  /* Над панелью быстрых кнопок. */
+  .select-bar {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  body:has(.select-bar) .toast-host {
+    bottom: calc(150px + env(safe-area-inset-bottom));
+  }
 }
 
 @media (max-width: 560px) {
@@ -2107,8 +2510,24 @@ input[type="date"] {
     font-size: 10.5px;
   }
 
-  .brand:not(.brand-large) span {
-    display: block;
+  .lang-btn {
+    padding: 0 4px;
+  }
+
+  .lang-code {
+    display: none;
+  }
+
+  .wish {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .wish-side {
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
   }
 
   .hero-top {
@@ -2214,7 +2633,9 @@ input[type="date"] {
   .topbar,
   .quickbar,
   .hero-actions,
-  .tabs-wrap {
+  .tabs-wrap,
+  .list-tools,
+  .select-bar {
     display: none;
   }
 }

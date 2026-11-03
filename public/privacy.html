@@ -1,54 +1,150 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Как мы храним данные: Гараж Амедро</title>
+    <title>How we store data: D.Garage</title>
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <script src="/privacy.js" defer></script>
     <style>
       :root { color-scheme: light dark; }
       body { max-width: 68ch; margin: 0 auto; padding: 32px 18px 60px; font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
       h1 { font-size: 26px; line-height: 1.2; }
       h2 { font-size: 18px; margin-top: 28px; }
+      nav { display: flex; gap: 14px; margin-bottom: 18px; font-size: 14px; }
+      article + article { margin-top: 48px; padding-top: 24px; border-top: 1px solid #8884; }
+      .js article[hidden] { display: none; }
     </style>
   </head>
   <body>
-    <h1>Как мы храним данные</h1>
-    <p>Гараж Амедро — бортжурнал машины. Здесь коротко о том, что хранит сайт и что он делает с данными.</p>
+    <nav aria-label="Language">
+      <a href="#en" data-lang="en">English</a>
+      <a href="#uk" data-lang="uk">Українська</a>
+      <a href="#ru" data-lang="ru">рузкій язичок</a>
+    </nav>
 
-    <h2>Что хранится на сайте</h2>
-    <p>
-      Почта, имя, хэш пароля (сам пароль нигде не сохраняется), машины, записи о сервисе и заправках, напоминания и
-      ссылки на фото. Всё это лежит в базе данных Cloudflare и видно только в твоём аккаунте.
-    </p>
+    <article id="en" lang="en">
+      <h1>How we store data</h1>
+      <p>D.Garage is a car logbook. Here's a short summary of what the site stores and what it does with your data.</p>
 
-    <h2>Google Диск и Google Таблицы</h2>
-    <p>
-      Если ты подключаешь Google Диск, сайт создаёт на нём папку «Гараж Амедро» и складывает туда фото, скриншоты и
-      таблицу-бэкап. Сайт запрашивает только доступ <code>drive.file</code>: он видит и может менять лишь файлы,
-      которые создал сам. Остальные файлы на Диске ему недоступны.
-    </p>
-    <p>
-      Токен доступа хранится в зашифрованном виде и используется только для работы с этими файлами. Данные Google
-      никому не передаются и не используются для рекламы или обучения моделей. Отключить доступ можно в профиле сайта
-      на вкладке «Данные» или в настройках аккаунта Google. Файлы при этом остаются у тебя на Диске.
-    </p>
+      <h2>What the site stores</h2>
+      <p>
+        Your email, name, password hash (the password itself is never saved), cars, service and fill-up records,
+        reminders, wishlist items and links to photos. All of this lives in a Cloudflare database and is visible only
+        in your account.
+      </p>
 
-    <h2>Вход через Google</h2>
-    <p>При входе через Google сайт получает только почту, имя и идентификатор аккаунта.</p>
+      <h2>Google Drive and Google Sheets</h2>
+      <p>
+        If you connect Google Drive, the site creates a “D.Garage” folder on it and puts photos, screenshots and the
+        backup spreadsheet there. The site asks only for <code>drive.file</code> access: it can see and change only the
+        files it created itself. The rest of your Drive is off-limits.
+      </p>
+      <p>
+        The access token is stored encrypted and used only to work with those files. Google data isn't shared with
+        anyone and isn't used for advertising or to train models. You can revoke access on the site's “Data” tab or in
+        your Google account settings. Your files stay on your Drive.
+      </p>
 
-    <h2>Удаление</h2>
-    <p>
-      В профиле есть кнопка «Удалить аккаунт»: она сразу стирает аккаунт, машины, записи и токены из базы. Файлы на твоём
-      Google Диске при этом не удаляются.
-    </p>
+      <h2>Sign in with Google</h2>
+      <p>When you sign in with Google, the site receives only your email, name and account ID.</p>
 
-    <h2>Файлы cookie</h2>
-    <p>
-      Сайт использует одну служебную cookie для входа в аккаунт. Рекламы и сторонней аналитики нет. При регистрации
-      проверку на робота проводит Cloudflare Turnstile.
-    </p>
+      <h2>Deletion</h2>
+      <p>
+        Your profile has a “Delete account” button: it immediately erases the account, cars, records and tokens from
+        the database. Files on your Google Drive aren't deleted.
+      </p>
 
-    <p><a href="/">Вернуться в гараж</a></p>
+      <h2>Cookies</h2>
+      <p>
+        The site uses one technical cookie to keep you signed in. Interface settings (language, units, date format,
+        theme) are kept in your browser. There are no ads and no third-party analytics. Cloudflare Turnstile runs the
+        bot check at registration.
+      </p>
+
+      <p><a href="/">Back to the garage</a></p>
+    </article>
+
+    <article id="uk" lang="uk">
+      <h1>Як ми зберігаємо дані</h1>
+      <p>D.Garage — бортжурнал машини. Тут коротко про те, що зберігає сайт і що він робить із даними.</p>
+
+      <h2>Що зберігається на сайті</h2>
+      <p>
+        Пошта, ім'я, хеш пароля (сам пароль ніде не зберігається), машини, записи про сервіс і заправки, нагадування,
+        хотілки й посилання на фото. Усе це лежить у базі даних Cloudflare і видно лише у твоєму акаунті.
+      </p>
+
+      <h2>Google Диск і Google Таблиці</h2>
+      <p>
+        Якщо ти підключаєш Google Диск, сайт створює на ньому папку «D.Garage» і складає туди фото, скриншоти й
+        таблицю-бекап. Сайт запитує лише доступ <code>drive.file</code>: він бачить і може змінювати тільки файли, які
+        створив сам. Інші файли на Диску йому недоступні.
+      </p>
+      <p>
+        Токен доступу зберігається в зашифрованому вигляді й використовується лише для роботи з цими файлами. Дані
+        Google нікому не передаються й не використовуються для реклами чи навчання моделей. Вимкнути доступ можна на
+        вкладці «Дані» або в налаштуваннях акаунта Google. Файли при цьому залишаються в тебе на Диску.
+      </p>
+
+      <h2>Вхід через Google</h2>
+      <p>Під час входу через Google сайт отримує лише пошту, ім'я та ідентифікатор акаунта.</p>
+
+      <h2>Видалення</h2>
+      <p>
+        У профілі є кнопка «Видалити акаунт»: вона одразу стирає акаунт, машини, записи й токени з бази. Файли на
+        твоєму Google Диску при цьому не видаляються.
+      </p>
+
+      <h2>Файли cookie</h2>
+      <p>
+        Сайт використовує одну службову cookie для входу в акаунт. Налаштування інтерфейсу (мова, одиниці, формат
+        дати, тема) зберігаються у твоєму браузері. Реклами й сторонньої аналітики немає. Під час реєстрації перевірку
+        на робота проводить Cloudflare Turnstile.
+      </p>
+
+      <p><a href="/">Повернутися в гараж</a></p>
+    </article>
+
+    <article id="ru" lang="ru">
+      <h1>Как мы храним данные</h1>
+      <p>D.Garage — бортжурнал машины. Здесь коротко о том, что хранит сайт и что он делает с данными.</p>
+
+      <h2>Что хранится на сайте</h2>
+      <p>
+        Почта, имя, хэш пароля (сам пароль нигде не сохраняется), машины, записи о сервисе и заправках, напоминания,
+        хотелки и ссылки на фото. Всё это лежит в базе данных Cloudflare и видно только в твоём аккаунте.
+      </p>
+
+      <h2>Google Диск и Google Таблицы</h2>
+      <p>
+        Если ты подключаешь Google Диск, сайт создаёт на нём папку «D.Garage» и складывает туда фото, скриншоты и
+        таблицу-бэкап. Сайт запрашивает только доступ <code>drive.file</code>: он видит и может менять лишь файлы,
+        которые создал сам. Остальные файлы на Диске ему недоступны.
+      </p>
+      <p>
+        Токен доступа хранится в зашифрованном виде и используется только для работы с этими файлами. Данные Google
+        никому не передаются и не используются для рекламы или обучения моделей. Отключить доступ можно на вкладке
+        «Данные» или в настройках аккаунта Google. Файлы при этом остаются у тебя на Диске.
+      </p>
+
+      <h2>Вход через Google</h2>
+      <p>При входе через Google сайт получает только почту, имя и идентификатор аккаунта.</p>
+
+      <h2>Удаление</h2>
+      <p>
+        В профиле есть кнопка «Удалить аккаунт»: она сразу стирает аккаунт, машины, записи и токены из базы. Файлы на
+        твоём Google Диске при этом не удаляются.
+      </p>
+
+      <h2>Файлы cookie</h2>
+      <p>
+        Сайт использует одну служебную cookie для входа в аккаунт. Настройки интерфейса (язык, единицы, формат даты,
+        тема) хранятся в твоём браузере. Рекламы и сторонней аналитики нет. При регистрации проверку на робота
+        проводит Cloudflare Turnstile.
+      </p>
+
+      <p><a href="/">Вернуться в гараж</a></p>
+    </article>
   </body>
 </html>

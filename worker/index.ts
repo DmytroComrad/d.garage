@@ -7,6 +7,7 @@ import { google } from "./google/oauth";
 import { photos } from "./google/photos";
 import { sheets } from "./google/sheets";
 import { clientIp, limitApi } from "./guard";
+import { errorText, langOf, requestLang } from "./messages";
 import { cleanupExpired, requireUser } from "./session";
 import { ApiError, type AppEnv, type Bindings } from "./types";
 
@@ -16,7 +17,7 @@ app.use("*", async (c, next) => {
   // Захист від CSRF: зміни приймаємо лише зі свого ж походження. Cookie до того ж SameSite=Lax.
   const method = c.req.method;
   if (method !== "GET" && method !== "HEAD" && c.req.header("origin") !== new URL(c.req.url).origin) {
-    return c.json({ error: "Запрос отклонён." }, 403);
+    return c.json({ error: errorText(requestLang(c), "rejected") }, 403);
   }
   await limitApi(c, `ip:${clientIp(c)}`);
   await next();
@@ -58,13 +59,13 @@ app.route("/google/sheet", sheets);
 app.route("/google", google);
 app.route("/photos", photos);
 
-app.notFound((c) => c.json({ error: "Не найдено." }, 404));
+app.notFound((c) => c.json({ error: errorText(requestLang(c), "notFound") }, 404));
 
 app.onError((err, c) => {
-  if (err instanceof ApiError) return c.json({ error: err.message, code: err.code }, err.status);
+  if (err instanceof ApiError) return c.json({ error: errorText(requestLang(c), err.key), code: err.code }, err.status);
   // У журнал лише тип і шлях: пошта, токени й дані користувачів сюди не потрапляють.
   console.error(JSON.stringify({ event: "unhandled", name: err.name, message: err.message, path: new URL(c.req.url).pathname }));
-  return c.json({ error: "Что-то пошло не так. Попробуй ещё раз." }, 500);
+  return c.json({ error: errorText(requestLang(c), "internal") }, 500);
 });
 
 /**
@@ -77,7 +78,7 @@ function refuseInsecure(request: Request, url: URL, env: Bindings): Response | n
   if (request.method === "GET" || request.method === "HEAD") {
     return Response.redirect(`https://${url.host}${url.pathname}${url.search}`, 301);
   }
-  return Response.json({ error: "Нужно защищённое соединение." }, { status: 403 });
+  return Response.json({ error: errorText(langOf(request.headers.get("x-lang")), "insecure") }, { status: 403 });
 }
 
 export default {

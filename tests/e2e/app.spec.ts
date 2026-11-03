@@ -200,13 +200,13 @@ test.describe("доработки: затраты, таблица, напоми�
       page.waitForEvent("download"),
       page.getByRole("button", { name: "Скачать весь гараж" }).click(),
     ]);
-    expect(download.suggestedFilename()).toBe(`garage-backup-${today()}.txt`);
+    expect(download.suggestedFilename()).toBe(`d-garage-backup-${today()}.txt`);
     const path = await download.path();
     const text = await readFile(path, "utf8");
-    expect(JSON.parse(text).app).toBe("garage-amedro");
+    expect(JSON.parse(text).app).toBe("d-garage");
 
     await page.getByLabel("Файл бэкапа").setInputFiles({ name: "backup.txt", mimeType: "text/plain", buffer: Buffer.from(text) });
-    await expect(page.getByRole("status").filter({ hasText: "Загружено" })).toHaveText("Загружено: добавлено 0, уже были — 5");
+    await expect(page.getByRole("status").filter({ hasText: "Загружено" })).toHaveText("Загружено: добавлено 0, уже были — 7");
 
     await page.getByRole("button", { name: "Стереть все данные" }).click();
     await page.getByRole("button", { name: "Да, стереть" }).click();
@@ -241,7 +241,7 @@ test.describe("доработки: затраты, таблица, напоми�
 
     await area.fill(text);
     await other.getByRole("button", { name: "Загрузить" }).click();
-    await expect(other.getByRole("status").filter({ hasText: "Загружено" })).toHaveText("Загружено: добавлено 5, уже были — 0");
+    await expect(other.getByRole("status").filter({ hasText: "Загружено" })).toHaveText("Загружено: добавлено 7, уже были — 0");
     await other.reload();
     await other.getByRole("button", { name: "Демо-машина", exact: true }).click();
     await expect(other.locator(".gauge-main dd")).toHaveText(nb("27 093 ₴"));
@@ -260,7 +260,7 @@ test.describe("доработки: затраты, таблица, напоми�
 
     const book = new ExcelJS.Workbook();
     await book.xlsx.readFile(await download.path());
-    expect(book.worksheets.map((s) => s.name)).toEqual(["Сводка", "Обслуживание", "Позиции", "Заправки", "Напоминания"]);
+    expect(book.worksheets.map((s) => s.name)).toEqual(["Сводка", "Обслуживание", "Позиции", "Заправки", "Напоминания", "Хотелки"]);
 
     const value = (sheet: string, column: string, row = 2) => {
       const ws = book.getWorksheet(sheet);
@@ -353,7 +353,7 @@ test("ни одна вкладка не скроллится по горизон
   await loadDemo(page);
   for (const width of [320, 360, 390, 768, 900, 1024, 1280]) {
     await page.setViewportSize({ width, height: 800 });
-    for (const tab of ["Обслуживание", "Заправки", "Напоминания", "Галерея", "Статистика", "Данные"]) {
+    for (const tab of ["Обслуживание", "Заправки", "Напоминания", "Хотелки", "Галерея", "Статистика", "Данные"]) {
       await openTab(page, tab);
       await expectNoHorizontalScroll(page);
     }
@@ -420,7 +420,11 @@ test("незбережені записи переживають кінець с
   await expect(page.locator(".rec-title").first()).toHaveText("После сессии");
 
   await page.waitForLoadState("networkidle");
-  await page.evaluate(() => localStorage.clear());
+  // Мову лишаємо: перевірка не про неї.
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem("garage-ui", '{"lang":"ru"}');
+  });
   await page.reload();
   await openTab(page, "Заправки");
   await expect(page.locator(".rec-title").first()).toHaveText("После сессии");
@@ -443,7 +447,11 @@ test("другой аккаунт не получает чужие незбер�
   await page.getByRole("button", { name: "Создать гараж" }).click();
   await expect(page.getByRole("heading", { name: "Гараж пуст" })).toBeVisible();
   await page.waitForLoadState("networkidle");
-  await page.evaluate(() => localStorage.clear());
+  // Мову лишаємо: перевірка не про неї.
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem("garage-ui", '{"lang":"ru"}');
+  });
   await page.reload();
   await expect(page.getByRole("heading", { name: "Гараж пуст" })).toBeVisible();
 });

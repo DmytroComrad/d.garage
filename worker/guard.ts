@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 import { ApiError, type AppEnv } from "./types";
 
-const LIMIT_MESSAGE = "Слишком много попыток. Подожди минуту и попробуй снова.";
+const LIMIT_MESSAGE = "tooManyAttempts";
 
 export const clientIp = (c: Context<AppEnv>): string => c.req.header("cf-connecting-ip") ?? "local";
 
@@ -23,29 +23,29 @@ export async function readJson<T extends z.ZodType>(
   maxBytes = 64 * 1024,
 ): Promise<z.output<T>> {
   const declared = Number(c.req.header("content-length") ?? 0);
-  if (declared > maxBytes) throw new ApiError(413, "Слишком большой запрос.");
+  if (declared > maxBytes) throw new ApiError(413, "tooLarge");
   const text = await c.req.text();
-  if (text.length > maxBytes) throw new ApiError(413, "Слишком большой запрос.");
+  if (text.length > maxBytes) throw new ApiError(413, "tooLarge");
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new ApiError(400, "Не получилось прочитать запрос.");
+    throw new ApiError(400, "unreadable");
   }
   const parsed = schema.safeParse(raw);
-  if (!parsed.success) throw new ApiError(400, "Некорректные данные.");
+  if (!parsed.success) throw new ApiError(400, "badData");
   return parsed.data;
 }
 
 export async function verifyTurnstile(c: Context<AppEnv>, token: string | null | undefined): Promise<void> {
   const secret = c.env.TURNSTILE_SECRET;
   if (!secret || !c.env.TURNSTILE_SITE_KEY) return;
-  if (!token) throw new ApiError(400, "Подтверди, что ты не робот.");
+  if (!token) throw new ApiError(400, "captchaMissing");
   const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ secret, response: token, remoteip: clientIp(c) }),
   });
   const result = await res.json<{ success?: boolean }>().catch(() => ({ success: false }));
-  if (result.success !== true) throw new ApiError(400, "Проверка на робота не прошла. Попробуй ещё раз.");
+  if (result.success !== true) throw new ApiError(400, "captchaFailed");
 }

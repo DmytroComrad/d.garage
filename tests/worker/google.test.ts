@@ -50,15 +50,17 @@ afterEach(() => {
 
 type Client = {
   cookies: Map<string, string>;
-  call: (path: string, init?: { method?: string; body?: unknown; form?: FormData }) => Promise<Response>;
+  call: (path: string, init?: { method?: string; body?: unknown; form?: FormData; lang?: string }) => Promise<Response>;
 };
 
 const newClient = (): Client => {
   const cookies = new Map<string, string>();
   return {
     cookies,
-    call: async (path, { method, body, form } = {}) => {
+    call: async (path, { method, body, form, lang = "ru" } = {}) => {
+      // Ці перевірки писались, коли сайт був лише російською: мову передаємо так само, як застосунок.
       const headers: Record<string, string> = {
+        "x-lang": lang,
         origin: APP,
         cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join("; "),
       };
@@ -97,8 +99,8 @@ const register = async (): Promise<{ client: Client; email: string; id: string }
 };
 
 /** Проходить весь шлях підключення Диска з підробленим Google. */
-const connectDrive = async (client: Client, scope = `openid email ${DRIVE_SCOPE}`) => {
-  const start = await client.call("/api/google/drive/connect");
+const connectDrive = async (client: Client, scope = `openid email ${DRIVE_SCOPE}`, lang = "ru") => {
+  const start = await client.call(`/api/google/drive/connect?lang=${lang}`);
   const location = new URL(start.headers.get("location") ?? "");
   const state = location.searchParams.get("state");
   googleHandler = (url) =>
@@ -270,7 +272,7 @@ describe("підключення Диска", () => {
     expect(row?.refresh_token_enc).not.toContain("REFRESH-TOKEN-PLAIN");
     expect(row?.access_token_enc).not.toContain("ACCESS-TOKEN-PLAIN");
     expect(row?.gallery_folder_id).toBe("folder-Галерея");
-    expect(row?.shots_folder_id).toBe("folder-Скриншоты");
+    expect(row?.shots_folder_id).toBe("folder-Из записей");
 
     const state = await (await client.call("/api/state")).json<{ drive: { connected: boolean; email: string } }>();
     expect(state.drive).toMatchObject({ connected: true, email: "me@gmail.com" });
@@ -359,13 +361,13 @@ describe("фото", () => {
     expect(Object.values(row ?? {}).some((v) => v instanceof ArrayBuffer)).toBe(false);
   });
 
-  it("фото в записі йде в папку «Скриншоты»", async () => {
+  it("фото в записі йде в папку «Из записей»", async () => {
     const { client } = await ready();
     googleHandler = (url) => (url.includes("/upload/drive/v3/files") ? json({ id: "drive-2", name: "x", size: "19" }) : undefined);
     await client.call("/api/photos", { form: photoForm({ kind: "record", recordId: "rec1", id: "ph2" }) });
     const upload = calls.find((c) => c.url.includes("/upload/drive/v3/files"));
     const body = await new Response(upload?.init?.body as BodyInit).text();
-    expect(body).toContain('"parents":["folder-Скриншоты"]');
+    expect(body).toContain('"parents":["folder-Из записей"]');
   });
 
   it("SVG і HTML не приймаються, навіть якщо підробити тип", async () => {
@@ -624,5 +626,125 @@ describe("Google Таблиця", () => {
     const { client } = await register();
     const res = await client.call("/api/google/sheet/export", { body: {} });
     expect(res.status).toBe(409);
+  });
+});
+
+describe("назви на Диску мовою користувача", () => {
+  const renames = () =>
+    calls
+      .filter((c) => c.init?.method === "PATCH" && String(c.init?.body ?? "").includes('"name"'))
+      .map((c) => ({ id: decodeURIComponent(c.url.split("/files/")[1].split("?")[0]), name: JSON.parse(String(c.init?.body)).name }));
+  const foldersLang = (id: string) =>
+    db.prepare("SELECT folders_lang FROM google_connections WHERE user_id = ?").bind(id).first<{ folders_lang: string | null }>();
+
+  it("папки створюються мовою сайту, а Google показує екран згоди нею ж", async () => {
+    const { client, id } = await register();
+    const { location } = await connectDrive(client, undefined, "en");
+    expect(location.searchParams.get("hl")).toBe("en");
+    const row = await db
+      .prepare("SELECT root_folder_id, gallery_folder_id, shots_folder_id FROM google_connections WHERE user_id = ?")
+      .bind(id)
+      .first<Record<string, string>>();
+    expect(row).toEqual({
+      root_folder_id: "folder-D.Garage",
+      gallery_folder_id: "folder-Gallery",
+      shots_folder_id: "folder-From records",
+    });
+    expect((await foldersLang(id))?.folders_lang).toBe("en");
+  });
+
+  it("інша мова: папки перейменовуються один раз, а фото йде в ту саму папку", async () => {
+    const { client, id } = await register();
+    await connectDrive(client, undefined, "en");
+    await addCar(client);
+    googleHandler = (url) => (url.includes("/upload/drive/v3/files") ? json({ id: "drive-9", name: "x", size: "19" }) : undefined);
+    calls = [];
+    await client.call("/api/photos", { form: photoForm(), lang: "uk" });
+    expect(renames()).toEqual([
+      { id: "folder-D.Garage", name: "D.Garage" },
+      { id: "folder-Gallery", name: "Галерея" },
+      { id: "folder-From records", name: "Із записів" },
+    ]);
+    const upload = calls.find((c) => c.url.includes("/upload/drive/v3/files"));
+    expect(await new Response(upload?.init?.body as BodyInit).text()).toContain('"parents":["folder-Gallery"]');
+    expect((await foldersLang(id))?.folders_lang).toBe("uk");
+
+    calls = [];
+    await client.call("/api/photos", { form: photoForm({ id: "ph3" }), lang: "uk" });
+    expect(renames()).toEqual([]);
+  });
+
+  it("старі папки «Гараж Амедро» отримують нову назву при першому ж фото", async () => {
+    const { client, id } = await register();
+    await connectDrive(client);
+    await addCar(client);
+    await db.prepare("UPDATE google_connections SET folders_lang = NULL WHERE user_id = ?").bind(id).run();
+    googleHandler = (url) => (url.includes("/upload/drive/v3/files") ? json({ id: "drive-8", name: "x", size: "19" }) : undefined);
+    calls = [];
+    await client.call("/api/photos", { form: photoForm() });
+    expect(renames().map((r) => r.name)).toEqual(["D.Garage", "Галерея", "Из записей"]);
+    expect((await foldersLang(id))?.folders_lang).toBe("ru");
+  });
+
+  it("Google не відповів на перейменування: спробуємо наступного разу", async () => {
+    const { client, id } = await register();
+    await connectDrive(client, undefined, "en");
+    await addCar(client);
+    googleHandler = (url, init) => {
+      if (url.includes("/upload/drive/v3/files")) return json({ id: "drive-7", name: "x", size: "19" });
+      if (init?.method === "PATCH") return json({ error: {} }, 503);
+      return undefined;
+    };
+    const res = await client.call("/api/photos", { form: photoForm(), lang: "uk" });
+    expect(res.status).toBe(200);
+    expect((await foldersLang(id))?.folders_lang).toBe("en");
+  });
+});
+
+describe("Google Таблиця іншою мовою", () => {
+  const ruTabs = ["Сводка", "Обслуживание", "Позиции", "Заправки", "Напоминания", "Хотелки"];
+
+  it("листи й назва файлу — мовою сайту, а листи старою мовою прибираються", async () => {
+    const { client } = await register();
+    await connectDrive(client);
+    await addCar(client);
+    googleHandler = (url, init) => {
+      if (!url.startsWith("https://sheets.googleapis.com")) return undefined;
+      if (url.includes("?fields=spreadsheetId")) {
+        return json({ spreadsheetId: "sheet-uk", sheets: ruTabs.map((title, i) => ({ properties: { sheetId: i, title } })) });
+      }
+      if (url.includes("fields=sheets.properties") && !init?.method) {
+        return json({ sheets: ruTabs.map((title, i) => ({ properties: { sheetId: i, title } })) });
+      }
+      if (url.endsWith(":batchUpdate") && String(init?.body).includes("addSheet")) {
+        const requests = JSON.parse(String(init?.body)).requests as { addSheet?: { properties: { title: string } } }[];
+        return json({
+          replies: requests.map((r, i) => (r.addSheet ? { addSheet: { properties: { sheetId: 100 + i, title: r.addSheet.properties.title } } } : {})),
+        });
+      }
+      return json({});
+    };
+    await client.call("/api/google/sheet/export", { body: {} });
+    calls = [];
+    const res = await client.call("/api/google/sheet/export", { body: { dateFormat: "mdy" }, lang: "uk" });
+    expect(res.status).toBe(200);
+
+    const structure = calls.find((c) => c.url.endsWith(":batchUpdate") && String(c.init?.body).includes("addSheet"));
+    const requests = JSON.parse(String(structure?.init?.body)).requests as Record<string, { sheetId?: number; properties?: { title: string } }>[];
+    const added = requests.flatMap((r) => (r.addSheet ? [r.addSheet.properties?.title] : []));
+    const deleted = requests.flatMap((r) => (r.deleteSheet ? [r.deleteSheet.sheetId] : []));
+    // «Заправки» однакові українською й російською: цей лист лишається.
+    expect(added).toEqual(["Зведення", "Обслуговування", "Позиції", "Нагадування", "Хотілки"]);
+    expect(deleted).toEqual([0, 1, 2, 4, 5]);
+
+    const write = calls.find((c) => c.url.includes("/values:batchUpdate"));
+    const ranges = (JSON.parse(String(write?.init?.body)).data as { range: string }[]).map((d) => d.range);
+    expect(ranges).toContain("Зведення");
+
+    const format = calls.find((c) => c.url.endsWith(":batchUpdate") && String(c.init?.body).includes("updateSpreadsheetProperties"));
+    const body = String(format?.init?.body);
+    expect(body).toContain('"title":"D.Garage: бекап"');
+    expect(body).toContain('"locale":"uk_UA"');
+    expect(body).toContain('"pattern":"mm/dd/yyyy"');
   });
 });

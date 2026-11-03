@@ -73,3 +73,73 @@ export const CameraIcon = ({ size }: P) => (
     <circle cx="12" cy="13.5" r="3.5" />
   </Svg>
 );
+
+export const TrashIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M4 7h16" />
+    <path d="M9 7V4.5h6V7" />
+    <path d="M6 7l1 13h10l1-13" />
+    <path d="M10 11v5M14 11v5" />
+  </Svg>
+);
+
+export const CheckIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  </Svg>
+);
+
+export const LinkIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+    <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+  </Svg>
+);
+
+export const WarnIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M12 4l9 16H3z" />
+    <path d="M12 10v4M12 17v.5" />
+  </Svg>
+);
+
+export const InfoIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5M12 8v.5" />
+  </Svg>
+);
+
+/*
+ * Прапорці малюємо самі: Windows не показує емодзі-прапорці, замість них виходять літери.
+ * Російська мова — лише для автора проєкту, тож замість прапорця в неї білий прямокутник.
+ */
+const Flag = ({ children }: { children: ReactNode }) => (
+  <svg className="flag" width="22" height="15" viewBox="0 0 60 40" aria-hidden="true">
+    {children}
+  </svg>
+);
+
+/** Кореневий svg і так обрізає все за межами viewBox. */
+export const FlagEn = () => (
+  <Flag>
+    <rect width="60" height="40" fill="#012169" />
+    <path d="M0 0l60 40M60 0L0 40" stroke="#fff" strokeWidth="8" />
+    <path d="M0 0l60 40M60 0L0 40" stroke="#C8102E" strokeWidth="3" />
+    <path d="M30 0v40M0 20h60" stroke="#fff" strokeWidth="12" />
+    <path d="M30 0v40M0 20h60" stroke="#C8102E" strokeWidth="7" />
+  </Flag>
+);
+
+export const FlagUk = () => (
+  <Flag>
+    <rect width="60" height="20" fill="#0057B7" />
+    <rect y="20" width="60" height="20" fill="#FFD700" />
+  </Flag>
+);
+
+export const FlagBlank = () => (
+  <Flag>
+    <rect x="1" y="1" width="58" height="38" fill="#fff" stroke="#b9c0ca" strokeWidth="2" />
+  </Flag>
+);

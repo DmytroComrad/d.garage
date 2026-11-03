@@ -8,7 +8,7 @@ const stripUnits = (value: string): string =>
     .replace(/[\s   ]/g, "")
     .replace(/₴/g, "")
     .replace(/грн\.?/gi, "")
-    .replace(/км/gi, "")
+    .replace(/км|km|mi|миль|мили|милі/gi, "")
     .replace(/л/gi, "");
 
 /** Пробіг: крапки й коми — це лише роздільники тисяч. */
@@ -62,3 +62,22 @@ export const isIsoDate = (value: unknown): value is string => {
   const time = Date.parse(`${value}T00:00:00Z`);
   return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
 };
+
+/** Лише звичайні веб-адреси: javascript:, data: та інше в посилання не потрапляє. */
+export const isHttpUrl = (value: unknown): value is string => {
+  if (typeof value !== "string" || value.length > LIMITS.urlLength) return false;
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") && url.hostname.includes(".");
+  } catch {
+    return false;
+  }
+};
+
+/** Те, що людина вставила в поле посилання. Без протоколу додаємо https://. Не адреса → null. */
+export function normalizeUrl(raw: string): string | null {
+  const value = raw.trim();
+  if (!value) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
+  return isHttpUrl(withScheme) ? withScheme : null;
+}

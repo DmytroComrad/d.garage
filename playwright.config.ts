@@ -6,7 +6,17 @@ export default defineConfig({
   fullyParallel: true,
   workers: 4,
   reporter: [["list"]],
-  use: { baseURL: "http://localhost:5199", trace: "retain-on-failure", locale: "ru-RU", timezoneId: "Europe/Kyiv" },
+  use: {
+    baseURL: "http://localhost:5199",
+    trace: "retain-on-failure",
+    locale: "ru-RU",
+    timezoneId: "Europe/Kyiv",
+    // Основні сценарії написані російською, як інтерфейс до появи інших мов. Мову за замовчуванням перевіряє i18n.spec.ts.
+    storageState: {
+      cookies: [],
+      origins: [{ origin: "http://localhost:5199", localStorage: [{ name: "garage-ui", value: '{"lang":"ru"}' }] }],
+    },
+  },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 860 } } },
     { name: "mobile", use: { ...devices["Pixel 7"] } },

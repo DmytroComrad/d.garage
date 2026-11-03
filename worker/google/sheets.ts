@@ -1,9 +1,21 @@
 import { Hono } from "hono";
 import { todayISO } from "../../shared/format";
-import { SHEET_TITLES, buildSheets, sheetValues, sheetsToBackup, type Column, type Sheet } from "../../shared/sheet";
+import { MESSAGES } from "../../shared/i18n";
+import type { DateFormat, Lang } from "../../shared/prefs";
+import { sheetExportSchema } from "../../shared/schema";
+import {
+  ALL_SHEET_TITLES,
+  SHEET_DATE_PATTERNS,
+  buildSheets,
+  sheetValues,
+  sheetsToBackup,
+  type Column,
+  type Sheet,
+} from "../../shared/sheet";
 import type { SheetExportResponse, SheetImportResponse } from "../../shared/types";
 import { loadGarage } from "../data";
-import { limitApi } from "../guard";
+import { limitApi, readJson } from "../guard";
+import { requestLang } from "../messages";
 import { requireUser } from "../session";
 import { ApiError, type AppEnv, type Bindings } from "../types";
 import { DRIVE_URL, driveFileState, ensureFolders, requireDrive, sheetUrl, type Connection } from "./connection";
@@ -11,15 +23,17 @@ import { DRIVE_URL, driveFileState, ensureFolders, requireDrive, sheetUrl, type 
 const SHEETS_URL = "https://sheets.googleapis.com/v4/spreadsheets";
 const now = () => Math.floor(Date.now() / 1000);
 
-const NUMBER_FORMATS: Partial<Record<Column["format"], { type: string; pattern: string }>> = {
+const SHEET_LOCALES: Record<Lang, string> = { en: "en_US", uk: "uk_UA", ru: "ru_RU" };
+
+const numberFormats = (dateFormat: DateFormat): Partial<Record<Column["format"], { type: string; pattern: string }>> => ({
   money: { type: "NUMBER", pattern: "#,##0.00" },
   int: { type: "NUMBER", pattern: "#,##0" },
   dec1: { type: "NUMBER", pattern: "0.0" },
   liters: { type: "NUMBER", pattern: "#,##0.00" },
-  date: { type: "DATE", pattern: "dd.mm.yyyy" },
-};
+  date: { type: "DATE", pattern: SHEET_DATE_PATTERNS[dateFormat] },
+});
 
-const formatRequests = (sheet: Sheet, sheetId: number): unknown[] => {
+const formatRequests = (sheet: Sheet, sheetId: number, dateFormat: DateFormat): unknown[] => {
   const requests: unknown[] = [
     {
       repeatCell: {
@@ -30,7 +44,7 @@ const formatRequests = (sheet: Sheet, sheetId: number): unknown[] => {
     },
   ];
   sheet.columns.forEach((column, i) => {
-    const numberFormat = NUMBER_FORMATS[column.format];
+    const numberFormat = numberFormats(dateFormat)[column.format];
     if (!numberFormat) return;
     requests.push({
       repeatCell: {
@@ -62,7 +76,7 @@ async function openSpreadsheet(token: string, id: string): Promise<Map<string, n
   if ((await driveFileState(token, id)) === "gone") return null;
   const res = await sheetsFetch(token, `/${id}?fields=sheets.properties`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new ApiError(502, "Google Таблицы сейчас не отвечают. Попробуй позже.");
+  if (!res.ok) throw new ApiError(502, "sheetsDown");
   return tabIdsOf(await res.json<TabList>());
 }
 
@@ -71,18 +85,19 @@ async function createSpreadsheet(
   conn: Connection,
   token: string,
   sheets: Sheet[],
+  lang: Lang,
 ): Promise<{ id: string; tabs: Map<string, number> }> {
   const res = await sheetsFetch(token, "?fields=spreadsheetId,sheets.properties", {
     method: "POST",
     body: JSON.stringify({
-      properties: { title: "Гараж Амедро: бэкап", locale: "ru_RU" },
+      properties: { title: MESSAGES[lang].sheet.file, locale: SHEET_LOCALES[lang] },
       sheets: sheets.map((s) => ({ properties: { title: s.title, gridProperties: { frozenRowCount: 1 } } })),
     }),
   });
-  if (!res.ok) throw new ApiError(502, "Не получилось создать таблицу. Попробуй позже.");
+  if (!res.ok) throw new ApiError(502, "sheetCreateFailed");
   const body = await res.json<TabList & { spreadsheetId: string }>();
 
-  const folders = await ensureFolders(env, conn, token);
+  const folders = await ensureFolders(env, conn, token, lang);
   await fetch(`${DRIVE_URL}/${body.spreadsheetId}?addParents=${folders.root}&removeParents=root&fields=id`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}` },
@@ -90,22 +105,36 @@ async function createSpreadsheet(
   return { id: body.spreadsheetId, tabs: tabIdsOf(body) };
 }
 
-/** Лист могли перейменувати чи видалити: повертаємо ті, яких бракує, і чистимо решту. */
+/**
+ * Лист могли перейменувати чи видалити: повертаємо ті, яких бракує, і чистимо решту.
+ * Листи бекапу іншою мовою (людина змінила мову сайту) прибираємо, щоб у таблиці не лишалось застарілих копій.
+ */
 async function prepareSpreadsheet(token: string, id: string, tabs: Map<string, number>, sheets: Sheet[]): Promise<void> {
-  const failed = "Не получилось обновить таблицу. Попробуй позже.";
+  const failed = "sheetUpdateFailed";
+  const current = new Set(sheets.map((s) => s.title));
   const missing = sheets.filter((s) => !tabs.has(s.title));
-  if (missing.length) {
-    const added = await sheetsFetch(token, `/${id}:batchUpdate`, {
+  const stale = [...tabs].filter(([title]) => ALL_SHEET_TITLES.has(title) && !current.has(title));
+  if (missing.length || stale.length) {
+    // Спершу додаємо, потім видаляємо: у таблиці завжди має лишатися хоч один лист.
+    const changed = await sheetsFetch(token, `/${id}:batchUpdate`, {
       method: "POST",
       body: JSON.stringify({
-        requests: missing.map((s) => ({
-          addSheet: { properties: { title: s.title, gridProperties: { frozenRowCount: 1 } } },
-        })),
+        requests: [
+          ...missing.map((s) => ({
+            addSheet: { properties: { title: s.title, gridProperties: { frozenRowCount: 1 } } },
+          })),
+          ...stale.map(([, sheetId]) => ({ deleteSheet: { sheetId } })),
+        ],
       }),
     });
-    if (!added.ok) throw new ApiError(502, failed);
-    const body = await added.json<{ replies: { addSheet: { properties: { sheetId: number; title: string } } }[] }>();
-    for (const reply of body.replies) tabs.set(reply.addSheet.properties.title, reply.addSheet.properties.sheetId);
+    if (!changed.ok) throw new ApiError(502, failed);
+    const body = await changed.json<{
+      replies: { addSheet?: { properties: { sheetId: number; title: string } } }[];
+    }>();
+    for (const reply of body.replies ?? []) {
+      if (reply.addSheet) tabs.set(reply.addSheet.properties.title, reply.addSheet.properties.sheetId);
+    }
+    for (const [title] of stale) tabs.delete(title);
   }
   const cleared = await sheetsFetch(token, `/${id}/values:batchClear`, {
     method: "POST",
@@ -114,7 +143,14 @@ async function prepareSpreadsheet(token: string, id: string, tabs: Map<string, n
   if (!cleared.ok) throw new ApiError(502, failed);
 }
 
-async function writeSpreadsheet(token: string, id: string, tabs: Map<string, number>, sheets: Sheet[]): Promise<void> {
+async function writeSpreadsheet(
+  token: string,
+  id: string,
+  tabs: Map<string, number>,
+  sheets: Sheet[],
+  lang: Lang,
+  dateFormat: DateFormat,
+): Promise<void> {
   // RAW і числа в JSON: таблиця не намагається нічого розбирати за своєю локаллю.
   const written = await sheetsFetch(token, `/${id}/values:batchUpdate`, {
     method: "POST",
@@ -127,15 +163,24 @@ async function writeSpreadsheet(token: string, id: string, tabs: Map<string, num
       })),
     }),
   });
-  if (!written.ok) throw new ApiError(502, "Не получилось записать данные в таблицу. Попробуй позже.");
+  if (!written.ok) throw new ApiError(502, "sheetWriteFailed");
 
   const formatted = await sheetsFetch(token, `/${id}:batchUpdate`, {
     method: "POST",
     body: JSON.stringify({
-      requests: sheets.flatMap((s) => {
-        const tab = tabs.get(s.title);
-        return tab == null ? [] : formatRequests(s, tab);
-      }),
+      requests: [
+        // Назва файлу й локаль — мовою, якою його оновили востаннє.
+        {
+          updateSpreadsheetProperties: {
+            properties: { title: MESSAGES[lang].sheet.file, locale: SHEET_LOCALES[lang] },
+            fields: "title,locale",
+          },
+        },
+        ...sheets.flatMap((s) => {
+          const tab = tabs.get(s.title);
+          return tab == null ? [] : formatRequests(s, tab, dateFormat);
+        }),
+      ],
     }),
   });
   if (!formatted.ok) console.warn(JSON.stringify({ event: "sheet_format_failed", status: formatted.status }));
@@ -146,10 +191,12 @@ export const sheets = new Hono<AppEnv>();
 sheets.post("/export", requireUser, async (c) => {
   const user = c.get("user");
   await limitApi(c, `sheet:${user.id}`);
+  const { dateFormat } = await readJson(c, sheetExportSchema);
+  const lang = requestLang(c);
   const { conn, token } = await requireDrive(c.env, user.id);
 
   const garage = await loadGarage(c.env.DB, user.id, user.demo);
-  const content = buildSheets(garage, todayISO());
+  const content = buildSheets(garage, todayISO(), lang);
 
   const existing = conn.sheet_id ? await openSpreadsheet(token, conn.sheet_id) : null;
   let spreadsheetId: string;
@@ -159,9 +206,9 @@ sheets.post("/export", requireUser, async (c) => {
     tabs = existing;
     await prepareSpreadsheet(token, spreadsheetId, tabs, content);
   } else {
-    ({ id: spreadsheetId, tabs } = await createSpreadsheet(c.env, conn, token, content));
+    ({ id: spreadsheetId, tabs } = await createSpreadsheet(c.env, conn, token, content, lang));
   }
-  await writeSpreadsheet(token, spreadsheetId, tabs, content);
+  await writeSpreadsheet(token, spreadsheetId, tabs, content, lang, dateFormat);
 
   const exportedAt = now();
   await c.env.DB.prepare("UPDATE google_connections SET sheet_id = ?, sheet_exported_at = ? WHERE user_id = ?")
@@ -174,14 +221,14 @@ sheets.post("/import", requireUser, async (c) => {
   const user = c.get("user");
   await limitApi(c, `sheet:${user.id}`);
   const { conn, token } = await requireDrive(c.env, user.id);
-  if (!conn.sheet_id) throw new ApiError(404, "Таблицы пока нет. Сначала обнови её с сайта.");
+  if (!conn.sheet_id) throw new ApiError(404, "noSheet");
 
   const tabs = await openSpreadsheet(token, conn.sheet_id);
-  if (!tabs) throw new ApiError(404, "Таблица удалена. Создай новую кнопкой выше.");
+  if (!tabs) throw new ApiError(404, "sheetDeleted");
 
   // Лише наявні листи: один запит на всі разом падає, якщо хоч один перейменували чи видалили.
-  const titles = Object.values(SHEET_TITLES).filter((t) => tabs.has(t));
-  if (!titles.length) throw new ApiError(400, "В таблице нет листов бэкапа.");
+  const titles = [...tabs.keys()].filter((t) => ALL_SHEET_TITLES.has(t));
+  if (!titles.length) throw new ApiError(400, "noBackupTabs");
   const query = new URLSearchParams({
     valueRenderOption: "UNFORMATTED_VALUE",
     dateTimeRenderOption: "SERIAL_NUMBER",
@@ -189,7 +236,7 @@ sheets.post("/import", requireUser, async (c) => {
   for (const t of titles) query.append("ranges", t);
 
   const res = await sheetsFetch(token, `/${conn.sheet_id}/values:batchGet?${query}`);
-  if (!res.ok) throw new ApiError(502, "Не получилось прочитать таблицу. Попробуй позже.");
+  if (!res.ok) throw new ApiError(502, "sheetReadFailed");
   const body = await res.json<{ valueRanges?: { range: string; values?: unknown[][] }[] }>();
 
   const values: Record<string, unknown[][] | undefined> = {};
@@ -197,6 +244,6 @@ sheets.post("/import", requireUser, async (c) => {
     values[range.range.split("!")[0].replace(/^'|'$/g, "")] = range.values;
   }
   const backup = sheetsToBackup(values);
-  if (!backup) throw new ApiError(400, "В таблице нет листов бэкапа.");
+  if (!backup) throw new ApiError(400, "noBackupTabs");
   return c.json({ backup } satisfies SheetImportResponse);
 });

@@ -2,13 +2,16 @@ import { useState, type FormEvent } from "react";
 import { LIMITS } from "../../shared/constants";
 import type { AuthResponse } from "../../shared/types";
 import { errorText, postJson } from "../lib/api";
-import { afterAuth, clearResetToken, toast, useStore } from "../lib/store";
+import { afterAuth, clearResetToken, googleHref, toast, useStore, useT } from "../lib/store";
+import { Brand } from "./Garage";
+import { LangMenu } from "./LangMenu";
 import { Odometer } from "./Odometer";
 import { Turnstile } from "./Turnstile";
 
 type Mode = "login" | "register" | "forgot" | "sent" | "reset";
 
 export function AuthScreen() {
+  const t = useT();
   const config = useStore((s) => s.config);
   const resetToken = useStore((s) => s.resetToken);
   const [mode, setMode] = useState<Mode>(resetToken ? "reset" : "login");
@@ -36,12 +39,12 @@ export function AuthScreen() {
     e.preventDefault();
     setError("");
 
-    if (mode !== "reset" && !email.trim()) return setError("Укажи почту.");
-    if (mode !== "forgot" && !password) return setError("Укажи пароль.");
+    if (mode !== "reset" && !email.trim()) return setError(t.auth.errEmail);
+    if (mode !== "forgot" && !password) return setError(t.auth.errPassword);
     if ((mode === "register" || mode === "reset") && password.length < 8) {
-      return setError("Пароль — минимум 8 символов.");
+      return setError(t.auth.errShort);
     }
-    if (needsCaptcha && !captcha) return setError("Пройди проверку на робота выше. Если там есть галочка, отметь её.");
+    if (needsCaptcha && !captcha) return setError(t.auth.errCaptcha);
 
     setBusy(true);
     try {
@@ -58,7 +61,7 @@ export function AuthScreen() {
         await postJson("/api/auth/reset", { token: resetToken, password });
         await afterAuth();
         clearResetToken();
-        toast("Пароль обновлён");
+        toast(t.auth.pwUpdated);
       }
     } catch (err) {
       setError(errorText(err));
@@ -69,56 +72,37 @@ export function AuthScreen() {
     }
   };
 
-  const titles: Record<Mode, string> = {
-    login: "Вход",
-    register: "Новый гараж",
-    forgot: "Восстановление пароля",
-    sent: "Проверь почту",
-    reset: "Новый пароль",
-  };
-  const actions: Partial<Record<Mode, string>> = {
-    login: "Войти",
-    register: "Создать гараж",
-    forgot: "Отправить ссылку",
-    reset: "Сохранить пароль",
-  };
+  const actions: Record<Exclude<Mode, "sent">, string> = t.auth.actions;
 
   return (
     <div className="auth">
+      <div className="auth-lang">
+        <LangMenu />
+      </div>
       <section className="auth-intro">
-        <div className="brand brand-large" aria-label="Гараж Амедро">
-          <span>Гараж</span> <span className="brand-accent">Амедро</span>
-        </div>
+        <Brand large />
         <Odometer value={186420} decorative />
-        <p className="auth-lead">
-          Записывай ремонты, покупки и заправки. Расход, вложения и цена километра посчитаются сами, а о замене
-          масла напомнит сайт.
-        </p>
+        <p className="auth-lead">{t.auth.lead}</p>
       </section>
 
       <section className="auth-card" aria-labelledby="auth-title">
         <h1 id="auth-title" className="auth-title">
-          {titles[mode]}
+          {t.auth.titles[mode]}
         </h1>
 
         {mode === "sent" ? (
           <>
-            <p className="muted">
-              Если такая почта зарегистрирована, на неё придёт письмо со ссылкой. Она действует час. Письма нет —
-              загляни в спам.
-            </p>
+            <p className="muted">{t.auth.sentText}</p>
             <button type="button" className="btn btn-ink btn-block" onClick={() => go("login")}>
-              Вернуться ко входу
+              {t.auth.backToLogin}
             </button>
           </>
         ) : (
           <form onSubmit={(e) => void submit(e)} noValidate>
-            {mode === "forgot" && (
-              <p className="muted">Отправим на почту ссылку, по которой можно задать новый пароль.</p>
-            )}
+            {mode === "forgot" && <p className="muted">{t.auth.forgotText}</p>}
             {mode === "register" && (
               <label className="field">
-                <span className="field-label">Как тебя зовут</span>
+                <span className="field-label">{t.auth.name}</span>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -129,7 +113,7 @@ export function AuthScreen() {
             )}
             {mode !== "reset" && (
               <label className="field">
-                <span className="field-label">Почта</span>
+                <span className="field-label">{t.auth.email}</span>
                 <input
                   type="email"
                   inputMode="email"
@@ -142,7 +126,7 @@ export function AuthScreen() {
             )}
             {mode !== "forgot" && (
               <label className="field">
-                <span className="field-label">Пароль</span>
+                <span className="field-label">{t.auth.password}</span>
                 <span className="input-with-action">
                   <input
                     type={show ? "text" : "password"}
@@ -151,10 +135,10 @@ export function AuthScreen() {
                     onChange={(e) => setPassword(e.target.value)}
                   />
                   <button type="button" className="input-action" onClick={() => setShow(!show)}>
-                    {show ? "Скрыть" : "Показать"}
+                    {show ? t.auth.hide : t.auth.show}
                   </button>
                 </span>
-                {(mode === "register" || mode === "reset") && <span className="field-hint">Минимум 8 символов</span>}
+                {(mode === "register" || mode === "reset") && <span className="field-hint">{t.auth.min8}</span>}
               </label>
             )}
 
@@ -167,20 +151,20 @@ export function AuthScreen() {
             )}
 
             <button type="submit" className="btn btn-ink btn-block" disabled={busy}>
-              {busy ? "Подожди…" : actions[mode]}
+              {busy ? t.common.wait : actions[mode]}
             </button>
 
             {mode === "login" && config.passwordReset && (
               <button type="button" className="link-btn auth-forgot" onClick={() => go("forgot")}>
-                Забыл пароль
+                {t.auth.forgot}
               </button>
             )}
             {mode === "login" && !config.passwordReset && config.googleLogin && (
-              <p className="field-hint">Забыл пароль? Войди через Google с этой же почтой: доступ вернётся.</p>
+              <p className="field-hint">{t.auth.forgotGoogle}</p>
             )}
             {(mode === "forgot" || mode === "reset") && (
               <button type="button" className="link-btn auth-forgot" onClick={() => go("login")}>
-                Вернуться ко входу
+                {t.auth.backToLogin}
               </button>
             )}
           </form>
@@ -188,31 +172,31 @@ export function AuthScreen() {
 
         {config.googleLogin && (mode === "login" || mode === "register") && (
           <>
-            <div className="auth-or">или</div>
-            <a className="btn btn-quiet btn-block" href="/api/google/login">
-              Войти через Google
+            <div className="auth-or">{t.auth.or}</div>
+            <a className="btn btn-quiet btn-block" href={googleHref("/api/google/login")}>
+              {t.auth.google}
             </a>
           </>
         )}
 
         {mode === "login" && (
           <p className="auth-switch">
-            Ещё нет гаража?{" "}
+            {t.auth.noGarage}{" "}
             <button type="button" className="link-btn" onClick={() => go("register")}>
-              Создать
+              {t.auth.create}
             </button>
           </p>
         )}
         {mode === "register" && (
           <p className="auth-switch">
-            Уже есть гараж?{" "}
+            {t.auth.haveGarage}{" "}
             <button type="button" className="link-btn" onClick={() => go("login")}>
-              Войти
+              {t.auth.login}
             </button>
           </p>
         )}
         <p className="auth-legal">
-          <a href="/privacy">Как мы храним данные</a>
+          <a href="/privacy">{t.auth.privacy}</a>
         </p>
       </section>
     </div>
