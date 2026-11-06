@@ -1,0 +1,102 @@
+name: Bug report
+description: Something on the site doesn't work or works wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this! Found a security vulnerability? Please don't post it here: [report it privately](https://github.com/DmytroComrad/d.garage/security/advisories/new).
+
+        Issues are public, so keep passwords, email addresses and other personal data out of the text and screenshots.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem. If an error message appeared, copy its exact text.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What to do to see the problem yourself.
+      placeholder: |
+        1. Open the Fill-ups tab
+        2. Tap "Add"
+        3. Enter ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where on the site?
+      options:
+        - Sign-in, registration or account
+        - Service
+        - Fill-ups
+        - Reminders
+        - Wishlist
+        - Gallery
+        - Stats
+        - Data (backup, Google Drive, Google Sheets)
+        - Offline mode or syncing
+        - Installing the app
+        - Somewhere else
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Sometimes
+        - It happened once
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      placeholder: "iPhone 15, Safari / Windows 11, Chrome"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: app-mode
+    attributes:
+      label: How do you open the site?
+      options:
+        - In the browser
+        - As an installed app (from the home screen or desktop)
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: Interface language
+      options:
+        - English
+        - Українська
+        - рузкій язичок
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or video
+      description: Drag files here. They help a lot, especially for problems on phones.
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: For example, units (km or miles), date format, whether you were offline, or errors from the browser console if you know how to get them.

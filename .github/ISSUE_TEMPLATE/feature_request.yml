@@ -1,0 +1,64 @@
+name: Feature request
+description: Suggest a new feature or an improvement to an existing one.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Please check the [existing suggestions](https://github.com/DmytroComrad/d.garage/issues?q=is%3Aissue%20label%3Aenhancement) first: if yours is already there, add a 👍 or a comment to it instead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would it solve?
+      description: Tell us what you're trying to do and what gets in the way now.
+      placeholder: I fill up at two stations and want to compare their prices, but ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: How do you picture it?
+      description: How it could work. A sketch or a screenshot from another app helps.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the site?
+      options:
+        - Sign-in, registration or account
+        - Service
+        - Fill-ups
+        - Reminders
+        - Wishlist
+        - Gallery
+        - Stats
+        - Data (backup, Google Drive, Google Sheets)
+        - Offline mode or syncing
+        - Installing the app
+        - Something new
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How do you manage now?
+      description: A workaround you use, or other solutions you've considered.
+
+  - type: dropdown
+    id: importance
+    attributes:
+      label: How much does it matter to you?
+      options:
+        - Nice to have
+        - I'd use it often
+        - Without it the site doesn't work for me
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
