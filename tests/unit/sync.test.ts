@@ -164,7 +164,7 @@ describe("кеш на пристрої", () => {
   };
   const full = {
     user: { id: "u1", email: "a@b.c", name: "", hasPassword: true, hasGoogle: false },
-    data: { cars: [], service: [], fuel: [], reminders: [], wishes: [], manuals: [], photos: [], demo: false },
+    data: { cars: [], service: [], fuel: [], reminders: [], wishes: [], manuals: [], contacts: [], photos: [], demo: false },
     drive: { connected: false, email: null, sheetUrl: null, sheetExportedAt: null },
     queue: [],
     etag: null,

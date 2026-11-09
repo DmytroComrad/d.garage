@@ -751,8 +751,8 @@ describe("Google Таблиця іншою мовою", () => {
     const requests = JSON.parse(String(structure?.init?.body)).requests as Record<string, { sheetId?: number; properties?: { title: string } }>[];
     const added = requests.flatMap((r) => (r.addSheet ? [r.addSheet.properties?.title] : []));
     const deleted = requests.flatMap((r) => (r.deleteSheet ? [r.deleteSheet.sheetId] : []));
-    // «Заправки» однакові українською й російською: цей лист лишається.
-    expect(added).toEqual(["Зведення", "Обслуговування", "Позиції", "Нагадування", "Хотілки"]);
+    // «Заправки» однакові українською й російською: цей лист лишається. «Контактів» у старій таблиці ще не було.
+    expect(added).toEqual(["Зведення", "Обслуговування", "Позиції", "Нагадування", "Хотілки", "Контакти"]);
     expect(deleted).toEqual([0, 1, 2, 4, 5]);
 
     const write = calls.find((c) => c.url.includes("/values:batchUpdate"));

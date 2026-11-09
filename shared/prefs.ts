@@ -27,6 +27,25 @@ export const readPrefs = (raw: Partial<Record<keyof Prefs, unknown>> | null | un
 
 export const otherUnit = (unit: Unit): Unit => (unit === "km" ? "mi" : "km");
 
+/**
+ * Мова з заголовка Accept-Language: перша з наших за вагою q. Для сторінок, які відкривають без застосунку,
+ * тож вибраної на сайті мови там немає. Нічого не підійшло — англійська.
+ */
+export function langFromAcceptLanguage(header: string | null | undefined): Lang {
+  const ranked = (header ?? "")
+    .split(",")
+    .map((part, order) => {
+      const [tag = "", ...params] = part.split(";").map((p) => p.trim());
+      const q = params.find((p) => p.startsWith("q="));
+      const weight = q ? Number(q.slice(2)) : 1;
+      return { lang: tag.toLowerCase().split("-")[0], weight: Number.isFinite(weight) ? weight : 0, order };
+    })
+    .filter((entry) => entry.weight > 0 && isLang(entry.lang))
+    .sort((a, b) => b.weight - a.weight || a.order - b.order);
+  const best = ranked[0]?.lang;
+  return isLang(best) ? best : DEFAULT_PREFS.lang;
+}
+
 let current: Prefs = DEFAULT_PREFS;
 
 /**

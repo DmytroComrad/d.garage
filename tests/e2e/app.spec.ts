@@ -287,7 +287,7 @@ test.describe("доработки: затраты, таблица, напоми�
 
     const book = new ExcelJS.Workbook();
     await book.xlsx.readFile(await download.path());
-    expect(book.worksheets.map((s) => s.name)).toEqual(["Сводка", "Обслуживание", "Позиции", "Заправки", "Напоминания", "Хотелки"]);
+    expect(book.worksheets.map((s) => s.name)).toEqual(["Сводка", "Обслуживание", "Позиции", "Заправки", "Напоминания", "Хотелки", "Контакты"]);
 
     const value = (sheet: string, column: string, row = 2) => {
       const ws = book.getWorksheet(sheet);
@@ -421,7 +421,7 @@ test("ни одна вкладка не скроллится по горизон
   await loadDemo(page);
   for (const width of [320, 360, 390, 768, 900, 1024, 1280]) {
     await page.setViewportSize({ width, height: 800 });
-    for (const tab of ["Обслуживание", "Заправки", "Напоминания", "Хотелки", "Галерея", "Статистика", "Данные"]) {
+    for (const tab of ["Обслуживание", "Заправки", "Напоминания", "Хотелки", "Контакты", "Галерея", "Статистика", "Данные"]) {
       await openTab(page, tab);
       await expectNoHorizontalScroll(page);
     }

@@ -44,7 +44,8 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+  // Сторінка контакту за посиланням (/c/…) — лише з мережі: без мережі оболонка гаража її не замінить.
+  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/") || url.pathname.startsWith("/c/")) return;
 
   if (request.mode === "navigate") {
     event.respondWith(

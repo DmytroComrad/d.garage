@@ -11,7 +11,7 @@ import {
 } from "./carProfile";
 import { LIMITS } from "./constants";
 import { FUEL_GRADES, type FuelGrade } from "./fuelGrades";
-import { isHttpUrl, isIsoDate } from "./parse";
+import { isEmailAddress, isHttpUrl, isIsoDate, isPhone } from "./parse";
 
 const id = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
 const isoDate = z.string().refine(isIsoDate);
@@ -140,6 +140,18 @@ export const manualSchema = z.object({
   added: isoDate,
 });
 
+/** Контакт для машини. Обов'язкове лише ім'я; порожній рядок означає «немає». */
+export const contactSchema = z.object({
+  id,
+  car: id,
+  name: z.string().trim().min(1).max(LIMITS.contactNameLength),
+  role: z.string().trim().max(LIMITS.contactRoleLength),
+  phone: z.string().trim().refine((v) => v === "" || isPhone(v)),
+  email: z.string().trim().refine((v) => v === "" || isEmailAddress(v)),
+  link: z.string().trim().refine((v) => v === "" || isHttpUrl(v)),
+  note: z.string().trim().max(LIMITS.noteLength),
+});
+
 export const opSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("car.put"), data: carSchema }),
   z.object({ type: z.literal("car.profile"), id, data: carProfileSchema }),
@@ -154,6 +166,8 @@ export const opSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("wish.del"), id }),
   z.object({ type: z.literal("manual.put"), data: manualSchema }),
   z.object({ type: z.literal("manual.del"), id }),
+  z.object({ type: z.literal("contact.put"), data: contactSchema }),
+  z.object({ type: z.literal("contact.del"), id }),
   z.object({ type: z.literal("demo.set"), value: z.boolean() }),
   z.object({ type: z.literal("all.del") }),
 ]);

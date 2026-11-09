@@ -5,7 +5,19 @@ import { nameKey } from "../shared/format";
 import { isFuelGrade } from "../shared/fuelGrades";
 import { retargetOp } from "../shared/ops";
 import { opsRequestSchema } from "../shared/schema";
-import type { Car, FuelRecord, GarageData, Manual, Op, OpsResponse, Photo, Reminder, ServiceRecord, Wish } from "../shared/types";
+import type {
+  Car,
+  ContactEntry,
+  FuelRecord,
+  GarageData,
+  Manual,
+  Op,
+  OpsResponse,
+  Photo,
+  Reminder,
+  ServiceRecord,
+  Wish,
+} from "../shared/types";
 import { limitApi, readJson } from "./guard";
 import { requireUser } from "./session";
 import { ApiError, type AppEnv, type SessionUser } from "./types";
@@ -44,6 +56,10 @@ export const manualFromRow = (r: ManualRow): Manual => ({
   added: r.added,
   file: r.file_name ? { name: r.file_name, mime: r.file_mime ?? "application/octet-stream", size: r.file_size ?? 0 } : null,
 });
+type ContactRow = {
+  id: string; car_id: string; name: string; role: string; phone: string; email: string; link: string;
+  note: string; shared: number;
+};
 export type PhotoRow = {
   id: string; car_id: string; kind: string; record_id: string | null; drive_id: string; name: string;
   mime: string; size: number; width: number | null; height: number | null; created_at: number; storage: string;
@@ -82,7 +98,7 @@ const carFromRow = (r: CarRow): Car =>
 
 /** Усі дані користувача. Кожен запит обмежено його user_id. */
 export async function loadGarage(db: D1Database, userId: string, demo: number): Promise<GarageData> {
-  const [cars, service, fuel, reminders, wishes, manuals, photos] = await db.batch([
+  const [cars, service, fuel, reminders, wishes, manuals, contacts, photos] = await db.batch([
     db
       .prepare(
         `SELECT id, name, year, vin, plate, body, engine, fuel_type, purchase_date, purchase_price, about
@@ -94,6 +110,13 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
     db.prepare("SELECT * FROM reminders WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM wishes WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM manuals WHERE user_id = ?").bind(userId),
+    // Хеш посилання не віддаємо навіть власнику: лише те, що посилання ввімкнене.
+    db
+      .prepare(
+        `SELECT id, car_id, name, role, phone, email, link, note, share_hash IS NOT NULL AS shared
+         FROM contacts WHERE user_id = ?`,
+      )
+      .bind(userId),
     db.prepare("SELECT * FROM photos WHERE user_id = ?").bind(userId),
   ]);
   return {
@@ -156,6 +179,19 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
       }),
     ),
     manuals: (manuals.results as ManualRow[]).map(manualFromRow),
+    contacts: (contacts.results as ContactRow[]).map(
+      (r): ContactEntry => ({
+        id: r.id,
+        car: r.car_id,
+        name: r.name,
+        role: r.role,
+        phone: r.phone,
+        email: r.email,
+        link: r.link,
+        note: r.note,
+        shared: r.shared === 1,
+      }),
+    ),
     photos: (photos.results as PhotoRow[]).map(photoFromRow),
   };
 }
@@ -318,6 +354,23 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
     }
     case "manual.del":
       return [db.prepare("DELETE FROM manuals WHERE user_id = ? AND id = ?").bind(userId, op.id)];
+    case "contact.put": {
+      const ct = op.data;
+      // share_hash тут не чіпаємо: посилання вмикає й вимикає окремий запит.
+      return [
+        db
+          .prepare(
+            `INSERT INTO contacts (user_id, id, car_id, name, role, phone, email, link, note)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (user_id, id) DO UPDATE SET
+               car_id = excluded.car_id, name = excluded.name, role = excluded.role, phone = excluded.phone,
+               email = excluded.email, link = excluded.link, note = excluded.note`,
+          )
+          .bind(userId, ct.id, ct.car, ct.name, ct.role, ct.phone, ct.email, ct.link, ct.note),
+      ];
+    }
+    case "contact.del":
+      return [db.prepare("DELETE FROM contacts WHERE user_id = ? AND id = ?").bind(userId, op.id)];
     case "demo.set":
       return [db.prepare("UPDATE users SET demo = ? WHERE id = ?").bind(op.value ? 1 : 0, userId)];
     case "all.del":
@@ -330,7 +383,7 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
 
 /** Межі на користувача: база має рости повільно, навіть якщо хтось напише скрипт. */
 function checkQuota(user: SessionUser, ops: Op[]): void {
-  const adds = { car: 0, service: 0, fuel: 0, reminder: 0, wish: 0, manual: 0 };
+  const adds = { car: 0, service: 0, fuel: 0, reminder: 0, wish: 0, manual: 0, contact: 0 };
   for (const op of ops) {
     if (op.type === "car.put") adds.car++;
     if (op.type === "service.put") adds.service++;
@@ -338,6 +391,7 @@ function checkQuota(user: SessionUser, ops: Op[]): void {
     if (op.type === "reminder.put") adds.reminder++;
     if (op.type === "wish.put") adds.wish++;
     if (op.type === "manual.put") adds.manual++;
+    if (op.type === "contact.put") adds.contact++;
   }
   // Запас на один запит: оновлення наявних записів теж рахуються як додавання.
   if (
@@ -346,7 +400,8 @@ function checkQuota(user: SessionUser, ops: Op[]): void {
     (adds.fuel && user.fuel_count + adds.fuel > LIMITS.fuel + LIMITS.opsPerRequest) ||
     (adds.reminder && user.reminders_count + adds.reminder > LIMITS.reminders + LIMITS.opsPerRequest) ||
     (adds.wish && user.wishes_count + adds.wish > LIMITS.wishes + LIMITS.opsPerRequest) ||
-    (adds.manual && user.manuals_count + adds.manual > LIMITS.manuals + LIMITS.opsPerRequest)
+    (adds.manual && user.manuals_count + adds.manual > LIMITS.manuals + LIMITS.opsPerRequest) ||
+    (adds.contact && user.contacts_count + adds.contact > LIMITS.contacts + LIMITS.opsPerRequest)
   ) {
     throw new ApiError(413, "quota");
   }

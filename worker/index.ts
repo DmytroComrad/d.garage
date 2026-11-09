@@ -11,6 +11,7 @@ import { sheets } from "./google/sheets";
 import { clientIp, limitApi } from "./guard";
 import { errorText, langOf, requestLang } from "./messages";
 import { cleanupExpired, requireUser } from "./session";
+import { contactShare, sharePage } from "./share";
 import { ApiError, type AppEnv, type Bindings } from "./types";
 
 const app = new Hono<AppEnv>().basePath("/api");
@@ -61,6 +62,7 @@ app.get("/state", requireUser, async (c) => {
 
 app.route("/auth", auth);
 app.route("/", data);
+app.route("/contacts", contactShare);
 app.route("/google/sheet", sheets);
 app.route("/google", google);
 app.route("/photos", photos);
@@ -93,6 +95,8 @@ export default {
     const url = new URL(request.url);
     const refused = refuseInsecure(request, url, env);
     if (refused) return refused;
+    // Єдина сторінка без входу, яку малює сам Worker: контакт, яким поділились за посиланням.
+    if (url.pathname.startsWith("/c/")) return sharePage.fetch(request, env, ctx);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     return app.fetch(request, env, ctx);
   },

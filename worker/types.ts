@@ -41,6 +41,7 @@ export type SessionUser = {
   reminders_count: number;
   wishes_count: number;
   manuals_count: number;
+  contacts_count: number;
   photos_count: number;
 };
 

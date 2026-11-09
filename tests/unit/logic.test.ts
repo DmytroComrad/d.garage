@@ -304,10 +304,15 @@ describe("файл .xlsx", () => {
   });
 
   it("повна таблиця гаража відкривається без помилок", async () => {
-    const data = { ...emptyData(), cars: [{ id: CAR, name: "Тест" }], service, fuel };
+    const contacts = [
+      { id: "ct", car: CAR, name: "Іван", role: "", phone: "+380 67 123 45 67", email: "", link: "", note: "", shared: false },
+    ];
+    const data = { ...emptyData(), cars: [{ id: CAR, name: "Тест" }], service, fuel, contacts };
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(Buffer.from(buildXlsx(buildSheets(data, "2026-09-15", "en"))) as unknown as ArrayBuffer);
-    expect(book.worksheets).toHaveLength(6);
+    expect(book.worksheets).toHaveLength(7);
+    // Номер лишається текстом: таблиця не робить із «+380…» число чи формулу.
+    expect(book.getWorksheet("Contacts")?.getCell("D2").value).toBe("+380 67 123 45 67");
   });
 });
 

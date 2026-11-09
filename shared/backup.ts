@@ -11,13 +11,15 @@ import {
   roundEngine,
 } from "./carProfile";
 import { BACKUP_APP, LEGACY_BACKUP_APPS, LIMITS, OTHER_CATEGORY } from "./constants";
+import { contactFields, phoneDigits } from "./contacts";
 import { genId, nameKey } from "./format";
 import { isFuelGrade } from "./fuelGrades";
-import { isHttpUrl, isIsoDate } from "./parse";
+import { isEmailAddress, isHttpUrl, isIsoDate, isPhone } from "./parse";
 import type {
   Backup,
   Car,
   CarProfile,
+  Contact,
   FuelRecord,
   GarageData,
   Reminder,
@@ -26,19 +28,21 @@ import type {
   Wish,
 } from "./types";
 
-type BackupSource = Pick<GarageData, "cars" | "service" | "fuel" | "reminders" | "wishes">;
+type BackupSource = Pick<GarageData, "cars" | "service" | "fuel" | "reminders" | "wishes"> & { contacts: Contact[] };
 
 export function buildBackup(data: BackupSource, carId?: string): Backup {
   const only = <T extends { car: string }>(list: T[]) => (carId ? list.filter((r) => r.car === carId) : list);
   return {
     app: BACKUP_APP,
-    v: 3,
+    v: 4,
     saved: new Date().toISOString(),
     cars: carId ? data.cars.filter((c) => c.id === carId) : data.cars,
     service: only(data.service),
     fuel: only(data.fuel),
     reminders: only(data.reminders),
     wishes: only(data.wishes),
+    // Лише самі поля: чи ввімкнене посилання, у бекап не потрапляє.
+    contacts: only(data.contacts).map(contactFields),
   };
 }
 
@@ -56,6 +60,7 @@ export type RawBackup = {
   fuel?: unknown[];
   reminders?: unknown[];
   wishes?: unknown[];
+  contacts?: unknown[];
 };
 
 /** Код помилки, а не текст: текст обирає інтерфейс своєю мовою. */
@@ -146,6 +151,13 @@ const reminderKey = (carName: string, title: string, dueOdo: number | null, dueD
 
 const wishKey = (carName: string, title: string): string => [nameKey(carName), nameKey(title)].join("|");
 
+/** Той самий контакт: машина, ім'я й номер (лише цифри, тож «+380 67…» і «+38067…» — один номер). */
+const contactKey = (carName: string, name: string, phone: string): string =>
+  [nameKey(carName), nameKey(name), phoneDigits(phone)].join("|");
+
+/** Поле контакту з бекапу: що сервер не прийме, стає порожнім, а сам контакт лишається. */
+const validOr = (value: string, valid: (v: string) => boolean): string => (value && valid(value) ? value : "");
+
 export type MergeResult = {
   cars: Car[];
   /** Профілі з бекапу для нових машин і для тих, чий профіль ще порожній. */
@@ -154,6 +166,7 @@ export type MergeResult = {
   fuel: FuelRecord[];
   reminders: Reminder[];
   wishes: Wish[];
+  contacts: Contact[];
   added: number;
   skipped: number;
 };
@@ -359,5 +372,37 @@ export function mergeBackup(
     added++;
   }
 
-  return { cars: newCars, profiles, service, fuel, reminders, wishes, added, skipped };
+  // Посилань на контакти в бекапі немає: відновлений контакт завжди приватний.
+  const seenContacts = new Set(current.contacts.map((c) => contactKey(nameById.get(c.car) ?? "", c.name, c.phone)));
+  const contacts: Contact[] = [];
+  for (const raw of backup.contacts ?? []) {
+    const r = raw as Record<string, unknown>;
+    const car = backupCars.get(str(r?.car, 200));
+    const name = str(r?.name, LIMITS.contactNameLength);
+    if (!car || !name) {
+      skipped++;
+      continue;
+    }
+    // Задовгі значення не обрізаємо: обрізаний номер чи адреса були б уже чужими.
+    const phone = validOr(str(r.phone, 4000), isPhone);
+    const key = contactKey(car.name, name, phone);
+    if (seenContacts.has(key)) {
+      skipped++;
+      continue;
+    }
+    seenContacts.add(key);
+    contacts.push({
+      id: makeId(),
+      car: car.id,
+      name,
+      role: str(r.role, LIMITS.contactRoleLength),
+      phone,
+      email: validOr(str(r.email, 4000), isEmailAddress),
+      link: validOr(str(r.link, 4000), isHttpUrl),
+      note: str(r.note, LIMITS.noteLength),
+    });
+    added++;
+  }
+
+  return { cars: newCars, profiles, service, fuel, reminders, wishes, contacts, added, skipped };
 }

@@ -265,6 +265,11 @@ describe("клієнт і сервер рахують однаково", () => {
     service: [...d.service].sort((a, b) => a.id.localeCompare(b.id)),
     fuel: [...d.fuel].sort((a, b) => a.id.localeCompare(b.id)),
     reminders: [...d.reminders].sort((a, b) => a.id.localeCompare(b.id)),
+    contacts: [...d.contacts].sort((a, b) => a.id.localeCompare(b.id)),
+  });
+  const contact = (id: string, c: string, name = "Іван"): Op => ({
+    type: "contact.put",
+    data: { id, car: c, name, role: "", phone: "+380 67 000 00 00", email: "", link: "", note: "" },
   });
   const reminder = (id: string, c: string, recordId: string | null = null): Op => ({
     type: "reminder.put",
@@ -278,6 +283,19 @@ describe("клієнт і сервер рахують однаково", () => {
     ["видалення машини", [car("a", "A"), car("b", "B"), service("s1", "a"), fuel("f2", "b"), reminder("r1", "a"), { type: "car.del", id: "a" }]],
     ["переїзд", [car("a", "A"), car("b", "B"), service("s1", "a"), reminder("r1", "a", "s1"), service("s1", "b")]],
     ["видалення нагадування", [car("a", "A"), reminder("r1", "a"), { type: "reminder.del", id: "r1" }]],
+    [
+      "контакти",
+      [
+        car("a", "A"),
+        car("b", "B"),
+        contact("c1", "a"),
+        contact("c2", "a"),
+        contact("c3", "b"),
+        contact("c1", "b", "Петро"),
+        { type: "contact.del", id: "c3" },
+        { type: "car.del", id: "a" },
+      ],
+    ],
     ["демо", [{ type: "demo.set", value: true }]],
     ["стерти все", [car("a", "A"), service("s1", "a"), { type: "demo.set", value: true }, { type: "all.del" }]],
   ])("%s", async (_label, list) => {
