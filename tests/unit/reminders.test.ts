@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, reminderStatus, reminderText, remindersToNotify } from "../../shared/reminders";
+import { addMonths, afterOdo, odoAfter, reminderStatus, reminderText, remindersToNotify } from "../../shared/reminders";
 import { DEFAULT_PREFS, applyPrefs } from "../../shared/prefs";
 import type { Reminder } from "../../shared/types";
 
@@ -81,5 +81,22 @@ describe("дата через N місяців", () => {
   it("не вилазить за межі місяця", () => {
     expect(addMonths("2026-01-31", 1)).toBe("2026-02-28");
     expect(addMonths("2026-09-15", 12)).toBe("2027-09-15");
+  });
+});
+
+describe("своє «через скільки» в окремому нагадуванні", () => {
+  it("через 6500 км від 120 000 — на пробігу 126 500, і назад", () => {
+    expect(odoAfter(120000, "6500", "km")).toBe("126500");
+    expect(odoAfter(120000, "6 500 км", "km")).toBe("126500");
+    expect(afterOdo(120000, "126500", "km")).toBe("6500");
+  });
+  it("у милях рахує від поточного пробігу в милях", () => {
+    // 160 934 км — це 100 000 миль.
+    expect(odoAfter(160934, "4000", "mi")).toBe("104000");
+    expect(afterOdo(160934, "104000", "mi")).toBe("4000");
+  });
+  it("порожнє, нуль, не число або пробіг уже позаду — поле лишається порожнім", () => {
+    for (const raw of ["", "0", "abc"]) expect(odoAfter(120000, raw, "km")).toBeNull();
+    for (const raw of ["", "abc", "119000", "120000"]) expect(afterOdo(120000, raw, "km")).toBeNull();
   });
 });

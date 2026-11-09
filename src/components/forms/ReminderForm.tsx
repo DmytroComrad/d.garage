@@ -3,7 +3,7 @@ import { LIMITS } from "../../../shared/constants";
 import { fmtDist, fmtUnits, genId, todayISO, unitLabel } from "../../../shared/format";
 import { parseOdo } from "../../../shared/parse";
 import { fromKm, toKm } from "../../../shared/prefs";
-import { DIST_PRESETS, notifiedLevel } from "../../../shared/reminders";
+import { DIST_PRESETS, afterOdo, notifiedLevel, odoAfter } from "../../../shared/reminders";
 import type { Reminder } from "../../../shared/types";
 import { closeDialog, dispatch, toast, useStore, useT } from "../../lib/store";
 import { Modal } from "../Modal";
@@ -24,6 +24,26 @@ export function ReminderForm({ reminder }: { reminder?: Reminder }) {
   const [error, setError] = useState("");
   const now = carOdo(car);
   const listId = useId();
+  // «Через скільки» від поточного пробігу: своє число замість пресету, пробіг рахується сам.
+  const [after, setAfter] = useState(() => (now != null ? (afterOdo(now, odo) ?? "") : ""));
+  const changeOdo = (value: string) => {
+    setOdo(value);
+    if (now != null) setAfter(afterOdo(now, value) ?? "");
+  };
+  const changeAfter = (value: string) => {
+    setAfter(value);
+    if (now == null) return;
+    const target = odoAfter(now, value);
+    if (target != null) setOdo(target);
+    else if (!value.trim()) setOdo("");
+  };
+  // Інша машина — інший поточний пробіг: «через скільки» лишається, пробіг перераховується.
+  const changeCar = (id: string) => {
+    setCar(id);
+    const nowOther = carOdo(id);
+    const target = nowOther != null ? odoAfter(nowOther, after) : null;
+    if (target != null) setOdo(target);
+  };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -61,7 +81,7 @@ export function ReminderForm({ reminder }: { reminder?: Reminder }) {
   return (
     <Modal title={reminder ? t.reminderForm.titleEdit : t.reminderForm.titleNew} onClose={() => closeDialog()}>
       <form onSubmit={submit} noValidate>
-        <CarSelect value={car} onChange={setCar} />
+        <CarSelect value={car} onChange={changeCar} />
         <Field label={t.reminderFields.what}>
           <input
             value={title}
@@ -74,7 +94,7 @@ export function ReminderForm({ reminder }: { reminder?: Reminder }) {
         <Suggest id={listId} values={reminders.map((r) => r.title)} />
         <div className="field-row">
           <Field label={t.reminderForm.atOdo(unitLabel())} hint={now != null ? t.reminderForm.now(fmtDist(now)) : undefined}>
-            <input inputMode="numeric" value={odo} onChange={(e) => setOdo(e.target.value)} />
+            <input inputMode="numeric" value={odo} onChange={(e) => changeOdo(e.target.value)} />
           </Field>
           <Field label={t.reminderFields.orDate}>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -83,10 +103,26 @@ export function ReminderForm({ reminder }: { reminder?: Reminder }) {
         {now != null && (
           <div className="preset-row">
             {DIST_PRESETS[unit].map((v) => (
-              <button key={v} type="button" className="preset" onClick={() => setOdo(String(fromKm(now) + v))}>
+              <button
+                key={v}
+                type="button"
+                className={`preset${after === String(v) ? " is-on" : ""}`}
+                onClick={() => changeAfter(String(v))}
+              >
                 {t.reminderForm.preset(fmtUnits(v))}
               </button>
             ))}
+            <label className="preset preset-input">
+              <span aria-hidden="true">{t.reminderForm.customAfter}</span>
+              <input
+                inputMode="numeric"
+                value={after}
+                onChange={(e) => changeAfter(e.target.value)}
+                aria-label={t.reminderForm.customLabel(unitLabel())}
+                placeholder={t.reminderForm.customPlaceholder}
+              />
+              <span aria-hidden="true">{unitLabel()}</span>
+            </label>
           </div>
         )}
         <ReminderNote />

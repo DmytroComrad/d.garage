@@ -1819,6 +1819,25 @@ input[type="date"] {
   color: var(--bg);
 }
 
+/* Своє значення поруч із пресетами: «через [6500] км». */
+.preset-input {
+  gap: 6px;
+  padding-right: 8px;
+  cursor: text;
+}
+
+.preset-input input {
+  width: 8ch;
+  min-height: 0;
+  padding: 2px 6px;
+  border-radius: 5px;
+  text-align: right;
+}
+
+.preset-input:focus-within {
+  border-color: var(--ink-3);
+}
+
 .sum-total {
   display: flex;
   align-items: center;
