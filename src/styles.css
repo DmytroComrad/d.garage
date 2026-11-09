@@ -920,6 +920,8 @@ td,
   display: block;
   font-family: var(--font-body);
   white-space: normal;
+  /* У .kv dd пробіли стиснуто для чисел; звичайний текст без цього злипався б в одне слово. */
+  word-spacing: normal;
   max-width: 190px;
 }
 
