@@ -152,7 +152,7 @@ try {
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${OUT}/live-desktop-hero.png` });
 
-  for (const [label, tab] of [["fuel", "Заправки"], ["reminders", "Напоминания"], ["wishes", "Хотелки"], ["gallery", "Галерея"], ["stats", "Статистика"], ["data", "Данные"], ["service", "Обслуживание"]]) {
+  for (const [label, tab] of [["fuel", "Заправки"], ["reminders", "Напоминания"], ["wishes", "Хотелки"], ["contacts", "Контакты"], ["gallery", "Галерея"], ["stats", "Статистика"], ["data", "Данные"], ["service", "Обслуживание"]]) {
     await page.getByRole("tab", { name: tab }).click();
     await page.waitForTimeout(350);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

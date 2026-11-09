@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { mergeBackup, type RawBackup } from "../../shared/backup";
+import type { ContactDraft } from "../../shared/contacts";
 import { demoRecords } from "../../shared/demo";
 import { genId, todayISO } from "../../shared/format";
 import { MESSAGES, messages, type Messages } from "../../shared/i18n";
@@ -8,6 +9,8 @@ import { applyPrefs, readPrefs, type Prefs } from "../../shared/prefs";
 import { remindersToNotify, type RemindersRow } from "../../shared/reminders";
 import type {
   AppConfig,
+  ContactEntry,
+  ContactShareResponse,
   DriveStatus,
   FuelRecord,
   GarageData,
@@ -21,12 +24,12 @@ import type {
   User,
   Wish,
 } from "../../shared/types";
-import { HttpError, NetworkError, getIfChanged, getJson, postJson } from "./api";
+import { HttpError, NetworkError, del, getIfChanged, getJson, postJson } from "./api";
 import { createCache } from "./cache";
-import { drainQueue, reconcileQueue } from "./sync";
+import { drainQueue, reconcileQueue, type DrainResult } from "./sync";
 import { carView, type CarView } from "./view";
 
-export type Tab = "service" | "fuel" | "reminders" | "wishes" | "manuals" | "gallery" | "stats" | "data";
+export type Tab = "service" | "fuel" | "reminders" | "wishes" | "manuals" | "contacts" | "gallery" | "stats" | "data";
 export type Theme = "auto" | "light" | "dark";
 
 /** Що підставити в нову сервісну форму: так хотілка стає записом витрат. */
@@ -40,6 +43,8 @@ export type Dialog =
   | { type: "reminder"; reminder?: Reminder }
   | { type: "wish"; wish?: Wish }
   | { type: "wishDone"; wish: Wish }
+  | { type: "contact"; contact?: ContactEntry; draft?: ContactDraft }
+  | { type: "contactShare"; contactId: string }
   | { type: "notify"; rows: RemindersRow[] }
   | { type: "account" }
   | { type: "copy"; text: string }
@@ -71,10 +76,15 @@ export type AppState = {
   dialog: Dialog;
   toast: { id: number; text: string } | null;
   uploading: number;
+  /**
+   * Посилання на контакти, видані в цій сесії. Сервер зберігає лише їхній хеш, тож після
+   * перезавантаження показати посилання вже нема звідки. На пристрій їх не записуємо.
+   */
+  shareLinks: Record<string, string>;
 };
 
 const UI_KEY = "garage-ui";
-const TABS: Tab[] = ["service", "fuel", "reminders", "wishes", "manuals", "gallery", "stats", "data"];
+const TABS: Tab[] = ["service", "fuel", "reminders", "wishes", "manuals", "contacts", "gallery", "stats", "data"];
 
 const noDrive: DriveStatus = { connected: false, email: null, sheetUrl: null, sheetExportedAt: null };
 
@@ -122,6 +132,7 @@ let state: AppState = {
   dialog: null,
   toast: null,
   uploading: 0,
+  shareLinks: {},
 };
 
 const listeners = new Set<() => void>();
@@ -202,6 +213,7 @@ const signedOut = (): Partial<AppState> => ({
   etag: null,
   queue: [],
   dialog: null,
+  shareLinks: {},
 });
 
 /** Сесія закінчилась: дані з пристрою прибираємо, а незбережені зміни лишаємо до повторного входу. */
@@ -300,7 +312,7 @@ export const closeDialog = (next: Dialog = null): void => {
 
 /* Синхронізація: зміна одразу видна в інтерфейсі, а на сервер іде через чергу. */
 
-let flushing = false;
+let draining: Promise<DrainResult> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let retryDelay = 3000;
 
@@ -314,30 +326,38 @@ const scheduleRetry = (): void => {
 const carAliases = new Map<string, string>();
 export const resolveCarId = (id: string): string => carAliases.get(id) ?? id;
 
+/**
+ * Відправити чергу. Якщо відправка вже йде, чекаємо, поки вона закінчиться: так той, хто викликав,
+ * знає, що його зміни дійшли до сервера (або що мережі немає), а не лише що хтось їх уже шле.
+ */
 export async function flush(): Promise<void> {
-  if (flushing || !state.user) return;
-  flushing = true;
+  if (!state.user) return;
+  if (draining) {
+    await draining;
+    return;
+  }
+  draining = drainQueue({
+    queue: () => state.queue,
+    setQueue: (queue) => {
+      setState({ queue });
+      saveCache();
+    },
+    send: (ops) => postJson<OpsResponse>("/api/ops", { ops }),
+    onRemap: (aliases) => {
+      for (const [from, to] of aliases) carAliases.set(from, to);
+      const moved = state.active ? aliases.get(state.active) : undefined;
+      if (moved) {
+        setState({ active: moved });
+        saveUi();
+      }
+    },
+    notify: toast,
+  });
   let result;
   try {
-    result = await drainQueue({
-      queue: () => state.queue,
-      setQueue: (queue) => {
-        setState({ queue });
-        saveCache();
-      },
-      send: (ops) => postJson<OpsResponse>("/api/ops", { ops }),
-      onRemap: (aliases) => {
-        for (const [from, to] of aliases) carAliases.set(from, to);
-        const moved = state.active ? aliases.get(state.active) : undefined;
-        if (moved) {
-          setState({ active: moved });
-          saveUi();
-        }
-      },
-      notify: toast,
-    });
+    result = await draining;
   } finally {
-    flushing = false;
+    draining = null;
   }
 
   if (result.outcome === "unauthorized") return endSession();
@@ -361,7 +381,12 @@ export function dispatch(...ops: Op[]): void {
 }
 
 /** Кеш зі старої версії застосунку міг не мати нових списків. */
-const withDefaults = (data: GarageData): GarageData => ({ ...emptyData(), ...data, wishes: data.wishes ?? [] });
+const withDefaults = (data: GarageData): GarageData => ({
+  ...emptyData(),
+  ...data,
+  wishes: data.wishes ?? [],
+  contacts: data.contacts ?? [],
+});
 
 export async function refresh({ force = false } = {}): Promise<void> {
   try {
@@ -616,6 +641,38 @@ export function unlinkWishes(wishes: Wish[]): void {
   dispatch(...wishes.map((w): Op => ({ type: "wish.put", data: { ...w, recordId: null } })));
 }
 
+/* Контакти */
+
+const markShared = (id: string, shared: boolean, url?: string): void => {
+  const { [id]: _old, ...links } = state.shareLinks;
+  setState({
+    data: { ...state.data, contacts: state.data.contacts.map((c) => (c.id === id ? { ...c, shared } : c)) },
+    shareLinks: url ? { ...links, [id]: url } : links,
+  });
+  saveCache();
+};
+
+/**
+ * Увімкнути посилання на контакт (або видати нове замість старого). Токен створює сервер,
+ * тож контакт спершу має дійти туди з черги. Без мережі кидає NetworkError.
+ */
+export async function shareContact(id: string): Promise<string> {
+  await flush();
+  // Контакт могли додати, коли відправка вже закінчувалась: тоді потрібен ще один прохід.
+  if (state.queue.length && !state.offline) await flush();
+  if (state.queue.length) throw new NetworkError(messages().common.noServer);
+  const { url } = await postJson<ContactShareResponse>(`/api/contacts/${encodeURIComponent(id)}/share`);
+  markShared(id, true, url);
+  return url;
+}
+
+/** Вимкнути посилання: воно одразу перестає відкриватися. */
+export async function unshareContact(id: string): Promise<void> {
+  await flush();
+  await del(`/api/contacts/${encodeURIComponent(id)}/share`);
+  markShared(id, false);
+}
+
 /* Демо і відновлення */
 
 export function loadDemo(): void {
@@ -641,6 +698,7 @@ export function applyBackup(raw: RawBackup): { added: number; skipped: number } 
     ...merged.fuel.map((data): Op => ({ type: "fuel.put", data })),
     ...merged.reminders.map((data): Op => ({ type: "reminder.put", data })),
     ...merged.wishes.map((data): Op => ({ type: "wish.put", data })),
+    ...merged.contacts.map((data): Op => ({ type: "contact.put", data })),
   ];
   if (merged.added > 0 && state.data.demo) ops.push({ type: "demo.set", value: false });
   if (ops.length) dispatch(...ops);

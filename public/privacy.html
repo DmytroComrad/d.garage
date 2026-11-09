@@ -30,7 +30,7 @@
       <h2>What the site stores</h2>
       <p>
         Your email, name, password hash (the password itself is never saved), cars, service and fill-up records,
-        reminders, wishlist items, materials and photos. Records live in a Cloudflare database, photos in private Cloudflare R2
+        reminders, wishlist items, contacts, materials and photos. Records live in a Cloudflare database, photos in private Cloudflare R2
         storage. Both are visible only in your account.
       </p>
 
@@ -50,6 +50,21 @@
         made stay with those people.
       </p>
 
+      <h2>Contacts and shared links</h2>
+      <p>
+        For each car you can keep useful contacts: a name, what the person does, a phone number, an email, a link and
+        a note. Only you can see them, like the rest of your records. If you add a contact from your phone, the
+        browser gives the site only the contact you pick; the rest of your address book stays on the phone.
+      </p>
+      <p>
+        If you share a contact, the site creates a link to it. Anyone who has the link can see that one contact and
+        save it to their phone without signing in, until you turn the link off. They don't see your account, your
+        other contacts or your records. The site keeps only a fingerprint (hash) of the link, not the link itself,
+        and the page behind the link is hidden from search engines. Turning the link off or deleting the contact or
+        your account makes the link stop working right away.
+      </p>
+      <p>Contacts are other people's details: save and share them only with their consent.</p>
+
       <h2>Google Drive and Google Sheets</h2>
       <p>
         If you connect Google Drive, the site creates a “D.Garage” folder on it for the backup spreadsheet. Photos
@@ -68,9 +83,9 @@
 
       <h2>Deletion</h2>
       <p>
-        Your profile has a “Delete account” button: it immediately erases the account, cars, records and tokens from
-        the database, and photos and files are removed from the storage within a few minutes. Files on your Google Drive
-        aren't deleted.
+        Your profile has a “Delete account” button: it immediately erases the account, cars, records, contacts and
+        tokens from the database, shared contact links stop working, and photos and files are removed from the storage
+        within a few minutes. Files on your Google Drive aren't deleted.
       </p>
 
       <h2>Cookies</h2>
@@ -90,7 +105,7 @@
       <h2>Що зберігається на сайті</h2>
       <p>
         Пошта, ім'я, хеш пароля (сам пароль ніде не зберігається), машини, записи про сервіс і заправки, нагадування,
-        хотілки, матеріали й фото. Записи лежать у базі даних Cloudflare, фото — у приватному сховищі Cloudflare R2. І те, й те
+        хотілки, контакти, матеріали й фото. Записи лежать у базі даних Cloudflare, фото — у приватному сховищі Cloudflare R2. І те, й те
         видно лише у твоєму акаунті.
       </p>
 
@@ -110,6 +125,21 @@
         копії лишаються в тих людей.
       </p>
 
+      <h2>Контакти й посилання на них</h2>
+      <p>
+        Для кожної машини можна зберігати корисні контакти: ім'я, чим людина займається, телефон, пошту, посилання й
+        нотатку. Бачиш їх лише ти, як і решту записів. Якщо додаєш контакт із телефону, браузер передає сайту лише
+        вибраний контакт, а решта записника лишається в телефоні.
+      </p>
+      <p>
+        Якщо поділитися контактом, сайт створює на нього посилання. Хто має це посилання, бачить лише цей один контакт
+        і може зберегти його в телефон без входу на сайт, доки посилання не вимкнеш. Твого акаунта, інших контактів і
+        записів він не бачить. Сайт зберігає лише відбиток (хеш) посилання, а не саме посилання, а сторінка за
+        посиланням прихована від пошукових систем. Щойно посилання вимкнено або контакт чи акаунт видалено, посилання
+        перестає працювати.
+      </p>
+      <p>Контакти — це чужі дані: зберігай і поширюй їх лише за згодою людини.</p>
+
       <h2>Google Диск і Google Таблиці</h2>
       <p>
         Якщо ти підключаєш Google Диск, сайт створює на ньому папку «D.Garage» для таблиці-бекапу. Фото,
@@ -128,8 +158,9 @@
 
       <h2>Видалення</h2>
       <p>
-        У профілі є кнопка «Видалити акаунт»: вона одразу стирає акаунт, машини, записи й токени з бази, а фото й файли
-        зникають зі сховища протягом кількох хвилин. Файли на твоєму Google Диску при цьому не видаляються.
+        У профілі є кнопка «Видалити акаунт»: вона одразу стирає акаунт, машини, записи, контакти й токени з бази,
+        посилання на контакти перестають працювати, а фото й файли зникають зі сховища протягом кількох хвилин. Файли
+        на твоєму Google Диску при цьому не видаляються.
       </p>
 
       <h2>Файли cookie</h2>
@@ -149,7 +180,7 @@
       <h2>Что хранится на сайте</h2>
       <p>
         Почта, имя, хэш пароля (сам пароль нигде не сохраняется), машины, записи о сервисе и заправках, напоминания,
-        хотелки, материалы и фото. Записи лежат в базе данных Cloudflare, фото — в приватном хранилище Cloudflare R2. И то, и
+        хотелки, контакты, материалы и фото. Записи лежат в базе данных Cloudflare, фото — в приватном хранилище Cloudflare R2. И то, и
         другое видно только в твоём аккаунте.
       </p>
 
@@ -169,6 +200,20 @@
         у этих людей.
       </p>
 
+      <h2>Контакты и ссылки на них</h2>
+      <p>
+        Для каждой машины можно хранить полезные контакты: имя, чем человек занимается, телефон, почту, ссылку и
+        заметку. Видишь их только ты, как и остальные записи. Если добавляешь контакт из телефона, браузер передаёт
+        сайту только выбранный контакт, а остальная записная книжка остаётся в телефоне.
+      </p>
+      <p>
+        Если поделиться контактом, сайт создаёт на него ссылку. Кто получил эту ссылку, видит только этот один контакт
+        и может сохранить его в телефон без входа на сайт, пока ссылку не выключишь. Твоего аккаунта, других контактов
+        и записей он не видит. Сайт хранит только отпечаток (хэш) ссылки, а не саму ссылку, а страница по ссылке скрыта
+        от поисковых систем. Как только ссылка выключена или контакт либо аккаунт удалён, ссылка перестаёт работать.
+      </p>
+      <p>Контакты — это чужие данные: храни и передавай их только с согласия человека.</p>
+
       <h2>Google Диск и Google Таблицы</h2>
       <p>
         Если ты подключаешь Google Диск, сайт создаёт на нём папку «D.Garage» для таблицы-бэкапа. Фото, загруженные
@@ -187,8 +232,9 @@
 
       <h2>Удаление</h2>
       <p>
-        В профиле есть кнопка «Удалить аккаунт»: она сразу стирает аккаунт, машины, записи и токены из базы, а фото и файлы
-        исчезают из хранилища в течение нескольких минут. Файлы на твоём Google Диске при этом не удаляются.
+        В профиле есть кнопка «Удалить аккаунт»: она сразу стирает аккаунт, машины, записи, контакты и токены из базы,
+        ссылки на контакты перестают работать, а фото и файлы исчезают из хранилища в течение нескольких минут. Файлы
+        на твоём Google Диске при этом не удаляются.
       </p>
 
       <h2>Файлы cookie</h2>

@@ -103,21 +103,6 @@ export const NoteIcon = ({ size }: P) => (
   </Svg>
 );
 
-export const PencilIcon = ({ size }: P) => (
-  <Svg size={size}>
-    <path d="M4 20h4L19 9l-4-4L4 16z" />
-    <path d="M13.5 6.5l4 4" />
-  </Svg>
-);
-
-export const ShareIcon = ({ size }: P) => (
-  <Svg size={size}>
-    <path d="M12 3v12" />
-    <path d="M7 8l5-5 5 5" />
-    <path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
-  </Svg>
-);
-
 export const TrashIcon = ({ size }: P) => (
   <Svg size={size}>
     <path d="M4 7h16" />
@@ -137,6 +122,43 @@ export const LinkIcon = ({ size }: P) => (
   <Svg size={size}>
     <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
     <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+  </Svg>
+);
+
+export const PhoneIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M5 4h3.5l1.5 4-2 1.5a10 10 0 0 0 6.5 6.5l1.5-2 4 1.5V19a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" />
+  </Svg>
+);
+
+export const MailIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M3.5 6.5l8.5 6.5 8.5-6.5" />
+  </Svg>
+);
+
+/** Поділитися: три вузли, як у системних меню. */
+export const ShareIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <circle cx="18" cy="5.5" r="2.5" />
+    <circle cx="6" cy="12" r="2.5" />
+    <circle cx="18" cy="18.5" r="2.5" />
+    <path d="M8.2 10.8l7.6-4M8.2 13.2l7.6 4" />
+  </Svg>
+);
+
+export const DownloadIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M12 4v11M7 10.5l5 5 5-5" />
+    <path d="M5 20h14" />
+  </Svg>
+);
+
+export const PencilIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M15.5 4.5l4 4L8 20H4v-4z" />
+    <path d="M13 7l4 4" />
   </Svg>
 );
 

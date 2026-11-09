@@ -81,7 +81,7 @@ export const finishSave = (car: string, isNew: boolean, files: File[], recordId:
   void uploadPhotos(files, { car, kind: "record", recordId });
 };
 
-const ConfirmDelete = ({ question, onDelete }: { question: string; onDelete: () => void }) => {
+export const ConfirmDelete = ({ question, onDelete }: { question: string; onDelete: () => void }) => {
   const t = useT();
   const [asking, setAsking] = useState(false);
   if (!asking) {

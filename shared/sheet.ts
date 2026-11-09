@@ -6,7 +6,7 @@ import { MESSAGES, type Messages } from "./i18n";
 import { parseDecimal } from "./parse";
 import { LANGS, type Lang } from "./prefs";
 import type { RawBackup } from "./backup";
-import type { GarageData, ItemKind } from "./types";
+import type { Contact, GarageData, ItemKind } from "./types";
 
 /**
  * Таблиця-бекап. Усі значення рахує той самий код, що й сайт, і пишуться вони
@@ -24,7 +24,7 @@ export type Sheet = { title: string; columns: Column[]; rows: Cell[][] };
 type SheetKey = keyof (typeof MESSAGES)["en"]["sheet"]["tabs"];
 type ColKey = keyof (typeof MESSAGES)["en"]["sheet"]["col"];
 
-const SHEET_KEYS: SheetKey[] = ["summary", "service", "items", "fuel", "reminders", "wishes"];
+const SHEET_KEYS: SheetKey[] = ["summary", "service", "items", "fuel", "reminders", "wishes", "contacts"];
 
 const round = (n: number | null, digits: number): number | null =>
   n == null ? null : Math.round(n * 10 ** digits) / 10 ** digits;
@@ -37,7 +37,7 @@ export const sheetTitles = (lang: Lang): string[] => SHEET_KEYS.map((k) => MESSA
 export const ALL_SHEET_TITLES: ReadonlySet<string> = new Set(LANGS.flatMap(sheetTitles));
 
 export function buildSheets(
-  data: Pick<GarageData, "cars" | "service" | "fuel" | "reminders" | "wishes">,
+  data: Pick<GarageData, "cars" | "service" | "fuel" | "reminders" | "wishes"> & { contacts: Contact[] },
   today: string,
   lang: Lang,
 ): Sheet[] {
@@ -249,7 +249,27 @@ export function buildSheets(
       ]),
   };
 
-  return [summary, service, items, fuel, reminders, wishes];
+  // Посилання на контакти сюди не потрапляють: таблиця — це бекап, а посилання живе лише на сайті.
+  const contacts: Sheet = {
+    title: m.sheet.tabs.contacts,
+    columns: [
+      col("car"),
+      col("contactName"),
+      col("contactRole"),
+      col("phone"),
+      col("email"),
+      col("contactLink"),
+      col("note"),
+    ],
+    rows: data.cars.flatMap((car) =>
+      data.contacts
+        .filter((ct) => ct.car === car.id)
+        .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+        .map((ct): Cell[] => [car.name, ct.name, ct.role, ct.phone, ct.email, ct.link, ct.note]),
+    ),
+  };
+
+  return [summary, service, items, fuel, reminders, wishes, contacts];
 }
 
 /** Марка пального з таблиці: назва будь-якою мовою інтерфейсу або сам код. */
@@ -475,11 +495,28 @@ export function sheetsToBackup(tabs: Record<string, unknown[][] | undefined>): R
     ];
   });
 
+  const contacts = toRows(sheet("contacts")).flatMap((r) => {
+    const car = carOf(r);
+    if (!car) return [];
+    return [
+      {
+        car,
+        name: readStr(cell(r, "contactName")),
+        role: readStr(cell(r, "contactRole")),
+        phone: readStr(cell(r, "phone")),
+        email: readStr(cell(r, "email")),
+        link: readStr(cell(r, "contactLink")),
+        note: readStr(cell(r, "note")),
+      },
+    ];
+  });
+
   return {
     cars: [...names].map((name) => ({ id: name, name, profile: profiles.get(name) })),
     service,
     fuel,
     reminders,
     wishes,
+    contacts,
   };
 }

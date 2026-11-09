@@ -16,6 +16,7 @@ export const emptyData = (): GarageData => ({
   reminders: [],
   wishes: [],
   manuals: [],
+  contacts: [],
   photos: [],
   demo: false,
 });
@@ -55,6 +56,7 @@ export function applyOp(data: GarageData, op: Op): GarageData {
         reminders: data.reminders.filter((r) => r.car !== op.id),
         wishes: data.wishes.filter((w) => w.car !== op.id),
         manuals: data.manuals.filter((m) => m.car !== op.id),
+        contacts: data.contacts.filter((c) => c.car !== op.id),
         photos: data.photos.filter((p) => p.car !== op.id),
       };
     case "service.put":
@@ -90,6 +92,13 @@ export function applyOp(data: GarageData, op: Op): GarageData {
     }
     case "manual.del":
       return { ...data, manuals: data.manuals.filter((m) => m.id !== op.id) };
+    case "contact.put": {
+      // Посилання вмикає й вимикає лише сервер: правка контакту його не чіпає.
+      const shared = data.contacts.find((c) => c.id === op.data.id)?.shared ?? false;
+      return { ...data, contacts: upsert(data.contacts, { ...op.data, shared }) };
+    }
+    case "contact.del":
+      return { ...data, contacts: data.contacts.filter((c) => c.id !== op.id) };
     case "demo.set":
       return { ...data, demo: op.value };
     case "all.del":
@@ -116,6 +125,10 @@ export function retargetOp(op: Op, aliases: ReadonlyMap<string, string>): Op {
     case "manual.put": {
       const car = aliases.get(op.data.car);
       return car ? ({ ...op, data: { ...op.data, car } } as Op) : op;
+    }
+    case "contact.put": {
+      const car = aliases.get(op.data.car);
+      return car ? { ...op, data: { ...op.data, car } } : op;
     }
     case "car.profile":
     case "car.del": {

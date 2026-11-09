@@ -15,6 +15,7 @@ import {
   useT,
   type Tab,
 } from "../lib/store";
+import { ContactsTab } from "./ContactsTab";
 import { DataTab } from "./DataTab";
 import { FuelTab } from "./FuelTab";
 import { GalleryTab } from "./GalleryTab";
@@ -248,6 +249,7 @@ function Tabs({ carId }: { carId: string }) {
     { id: "reminders", label: t.tabs.reminders, badge: urgentReminders.length },
     { id: "wishes", label: t.tabs.wishes },
     { id: "manuals", label: t.tabs.manuals },
+    { id: "contacts", label: t.tabs.contacts },
     { id: "gallery", label: t.tabs.gallery },
     { id: "stats", label: t.tabs.stats },
     { id: "data", label: t.tabs.data },
@@ -350,6 +352,7 @@ export function Garage() {
               {tab === "reminders" && <RemindersTab carId={carId} />}
               {tab === "wishes" && <WishesTab carId={carId} />}
               {tab === "manuals" && <ManualsTab carId={carId} />}
+              {tab === "contacts" && <ContactsTab carId={carId} />}
               {tab === "gallery" && <GalleryTab carId={carId} />}
               {tab === "stats" && <StatsTab carId={carId} />}
               {tab === "data" && <DataTab />}

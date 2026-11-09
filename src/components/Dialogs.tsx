@@ -22,8 +22,10 @@ import {
   useT,
   type Theme,
 } from "../lib/store";
+import { ContactShareDialog } from "./ContactsTab";
 import { CarForm } from "./forms/CarForm";
 import { CarProfileForm } from "./forms/CarProfileForm";
+import { ContactForm } from "./forms/ContactForm";
 import { FuelForm } from "./forms/FuelForm";
 import { ManualForm } from "./forms/ManualForm";
 import { ReminderForm } from "./forms/ReminderForm";
@@ -472,6 +474,10 @@ export function Dialogs() {
       {dialog?.type === "reminder" && <ReminderForm key={dialog.reminder?.id ?? "new"} reminder={dialog.reminder} />}
       {dialog?.type === "wish" && <WishForm key={dialog.wish?.id ?? "new"} wish={dialog.wish} />}
       {dialog?.type === "wishDone" && <WishDoneDialog wish={dialog.wish} />}
+      {dialog?.type === "contact" && (
+        <ContactForm key={dialog.contact?.id ?? "new"} contact={dialog.contact} draft={dialog.draft} />
+      )}
+      {dialog?.type === "contactShare" && <ContactShareDialog contactId={dialog.contactId} />}
       {dialog?.type === "notify" && <NotifyDialog rows={dialog.rows} />}
       {dialog?.type === "copy" && <CopyDialog text={dialog.text} />}
       {dialog?.type === "account" && <AccountDialog />}

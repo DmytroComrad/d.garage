@@ -1,6 +1,6 @@
 # D.Garage
 
-A car logbook for repairs, purchases, fill-ups, maintenance reminders and a wishlist of plans for the car. It works out fuel consumption, total spend and cost per kilometre on its own. It runs on phones and desktops, with user accounts and its own database.
+A car logbook for repairs, purchases, fill-ups, maintenance reminders, a wishlist of plans for the car and an address book of useful contacts (a mechanic, a parts seller) that you can save to a phone or share by link. It works out fuel consumption, total spend and cost per kilometre on its own. It runs on phones and desktops, with user accounts and its own database.
 
 The interface is in English (the default), Ukrainian and Russian. Distances can be shown in kilometres or miles and dates as dd.mm.yyyy, mm/dd/yyyy or yyyy-mm-dd. These are per-device display settings: the database always stores kilometres.
 
@@ -79,3 +79,4 @@ Found a vulnerability? Please [report it privately](https://github.com/DmytroCom
 - State-changing requests are accepted only from the site's own origin.
 - Rate limiting, sign-in lockout after failed attempts, and Turnstile at registration.
 - Only images can be uploaded, and the type is checked from the file's contents. They are served with `nosniff` and a CSP `sandbox`.
+- A shared contact link is a random 144-bit token, and only its hash is stored. The page behind it (`/c/<token>`) is rendered by the Worker without scripts, with every value escaped, and is never cached, indexed or sent as a referrer. It is rate-limited per IP and shows only that one contact. Turning sharing off revokes the link at once.

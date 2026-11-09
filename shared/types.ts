@@ -3,6 +3,7 @@ import type { RawBackup } from "./backup";
 import type {
   carProfileSchema,
   carSchema,
+  contactSchema,
   fuelSchema,
   manualSchema,
   opSchema,
@@ -30,6 +31,13 @@ export type Wish = z.output<typeof wishSchema>;
 /** Файл мануала лежить у сховищі; тут лише те, що про нього знає сервер. */
 export type ManualFile = { name: string; mime: string; size: number };
 export type Manual = z.output<typeof manualSchema> & { file: ManualFile | null };
+/** Контакт: механік, продавець запчастин, сервіс. Так його шле клієнт і так він лежить у бекапі. */
+export type Contact = z.output<typeof contactSchema>;
+/**
+ * Контакт у даних гаража: сервер ще каже, чи ним поділились за посиланням.
+ * Самого посилання (і навіть його хешу) клієнт не отримує.
+ */
+export type ContactEntry = Contact & { shared: boolean };
 export type Op = z.output<typeof opSchema>;
 
 /** Рівні сповіщення: 0 — ще рано, 1 — за 1000 км / 30 днів, 2 — за 500 км / 7 днів, 3 — термін настав. */
@@ -65,19 +73,22 @@ export type GarageData = {
   reminders: Reminder[];
   wishes: Wish[];
   manuals: Manual[];
+  contacts: ContactEntry[];
   photos: Photo[];
   demo: boolean;
 };
 
 export type Backup = {
   app: "d-garage";
-  v: 3;
+  v: 4;
   saved: string;
   cars: Car[];
   service: ServiceRecord[];
   fuel: FuelRecord[];
   reminders: Reminder[];
   wishes: Wish[];
+  /** Без посилань: вони не переносяться в інший акаунт. */
+  contacts: Contact[];
 };
 
 export type User = {
@@ -113,6 +124,8 @@ export type SharedManualsResponse = { carName: string; own: boolean; items: Manu
 export type ImportManualsResponse = { manuals: Manual[] };
 export type SheetExportResponse = { url: string; exportedAt: number };
 export type SheetImportResponse = { backup: RawBackup };
+/** Посилання на контакт показується лише раз: сервер зберігає тільки його хеш. */
+export type ContactShareResponse = { url: string };
 
 export type OpsResponse = {
   /** Номери операцій, які база не прийняла. */

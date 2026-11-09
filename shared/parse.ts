@@ -101,3 +101,28 @@ export function normalizeUrl(raw: string): string | null {
   const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
   return isHttpUrl(withScheme) ? withScheme : null;
 }
+
+/**
+ * Телефон контакту: цифри, пробіли, дужки, дефіси, крапки й «+» на початку. Від 3 до 20 цифр.
+ * Літер тут не буває, тож у посилання tel: потрапляє лише номер.
+ */
+export const isPhone = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length <= LIMITS.phoneLength &&
+  /^\+?[\d\s().-]+$/.test(value) &&
+  /^(?:\D*\d){3,20}\D*$/.test(value);
+
+/**
+ * Адреса пошти: щось@домен.зона без пробілів. Кирилиця дозволена. Символи, якими можна дописати
+ * до mailto: тему чи інших адресатів (?, &, кома), не проходять.
+ */
+export const isEmailAddress = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length <= LIMITS.emailLength &&
+  /^[^\s@<>()[\]\\,;:"?&/]+@[^\s@<>()[\]\\,;:"?&/]+\.[^\s@<>()[\]\\,;:"?&/.]+$/.test(value);
+
+/** Посилання контакту: як у хотілках, а ще «@ім'я» стає посиланням на Telegram. */
+export function normalizeContactLink(raw: string): string | null {
+  const handle = /^@([A-Za-z0-9_]{4,32})$/.exec(raw.trim());
+  return handle ? `https://t.me/${handle[1]}` : normalizeUrl(raw);
+}
