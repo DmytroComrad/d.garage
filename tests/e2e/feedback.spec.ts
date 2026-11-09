@@ -376,3 +376,45 @@ test("хотелки можно отсортировать по цене и на
   await page.getByRole("button", { name: "Нет, не нужно" }).click();
   await expect(titles).toHaveText(["Коврики", "Шины", "Видеорегистратор"]);
 });
+
+test("марка топлива запоминается, статистика по АЗС и маркам с выводами и оговоркой", async ({ page }) => {
+  await register(page);
+  await addCar(page, "Тест");
+  const fill = async (f: { odo: string; liters: string; sum: string; station: string; grade?: string }) => {
+    await page.getByRole("button", { name: "+ Заправка" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Пробег, км").fill(f.odo);
+    await dialog.getByLabel("Литры").fill(f.liters);
+    await dialog.getByLabel("Сумма ₴").fill(f.sum);
+    await dialog.getByLabel("АЗС").fill(f.station);
+    if (f.grade) await dialog.getByLabel("Марка топлива").selectOption(f.grade);
+    await dialog.getByRole("button", { name: "Сохранить" }).click();
+    await expect(dialog).toBeHidden();
+  };
+  await fill({ odo: "1000", liters: "50", sum: "2500", station: "WOG", grade: "A95" });
+
+  // Следующая заправка предлагает ту же марку.
+  await page.getByRole("button", { name: "+ Заправка" }).first().click();
+  await expect(page.getByRole("dialog").getByLabel("Марка топлива")).toHaveValue("A95");
+  await page.getByRole("dialog").getByRole("button", { name: "Отмена" }).click();
+
+  await fill({ odo: "1500", liters: "40", sum: "2200", station: "OKKO" });
+  await fill({ odo: "2000", liters: "35", sum: "1925", station: "OKKO" });
+  await fill({ odo: "2500", liters: "40", sum: "2000", station: "WOG" });
+
+  await openTab(page, "Заправки");
+  await expect(page.locator(".rec").first()).toContainText("А-95");
+
+  await openTab(page, "Статистика");
+  await expect(page.getByRole("heading", { name: "Расходы", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Топливо", level: 2 })).toBeVisible();
+  const byStation = page.locator(".stat-sheet").filter({ has: page.getByRole("heading", { name: "По АЗС" }) });
+  await expect(byStation.locator("tbody tr")).toHaveCount(2);
+  await expect(byStation.locator("tbody tr").filter({ hasText: "OKKO" })).toContainText("7,5");
+  await expect(page.locator(".facts")).toContainText(nb("На «WOG» литр в среднем на 5,00 ₴ дешевле, чем на «OKKO»."));
+  await expect(page.locator(".facts")).toContainText(nb("С «OKKO» машина расходует 7,5 л/100, а с «WOG» — 8,0 л/100."));
+
+  await expect(page.getByText("Это не лабораторный анализ")).toBeVisible();
+  await page.getByRole("button", { name: "Понятно" }).click();
+  await expect(page.getByRole("button", { name: "Почему цифры приблизительные" })).toBeVisible();
+});

@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { LIMITS } from "../../../shared/constants";
 import { fmtDist, fmtMoney, fmtNum, genId, numInput, todayISO, unitLabel } from "../../../shared/format";
+import { FUEL_GROUPS, groupsForFuelType, isFuelGrade, lastGrade, type FuelGrade } from "../../../shared/fuelGrades";
 import { parseDecimal, parseMoney, parseOdo } from "../../../shared/parse";
 import { fromKm, toKm } from "../../../shared/prefs";
 import type { FuelRecord } from "../../../shared/types";
@@ -29,11 +30,14 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
   const photos = useStore((s) => s.data.photos);
 
   const [car, setCar] = useState(record?.car ?? carProp ?? active ?? cars[0]?.id ?? "");
+  const fuelType = useStore((s) => (s.data.cars.find((c) => c.id === car) as { fuelType?: string | null } | undefined)?.fuelType);
   const [date, setDate] = useState(record?.date ?? todayISO());
   const [odo, setOdo] = useState(record ? String(fromKm(record.odo)) : "");
   const [liters, setLiters] = useState(record ? numInput(record.liters) : "");
   const [sum, setSum] = useState(record ? numInput(record.sum) : "");
   const [station, setStation] = useState(record?.station ?? "");
+  // Нова заправка пропонує ту саму марку, що й минулого разу.
+  const [grade, setGrade] = useState<FuelGrade | "">(record ? (record.grade ?? "") : (lastGrade(allFuel, car) ?? ""));
   const [full, setFull] = useState(record?.full ?? true);
   const [note, setNote] = useState(record?.note ?? "");
   const [error, setError] = useState("");
@@ -86,6 +90,7 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
       station: station.trim(),
       full,
       note: note.trim(),
+      grade: grade || null,
     };
     dispatch({ type: "fuel.put", data: next }, ...reminderOps(built.reminder, linked));
     finishSave(car, !record, files, id);
@@ -132,6 +137,24 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
           />
         </Field>
         <Suggest id={stationsId} values={allFuel.map((f) => f.station)} />
+        <Field label={t.fuelForm.grade}>
+          <select value={grade} onChange={(e) => setGrade(isFuelGrade(e.target.value) ? e.target.value : "")}>
+            <option value="">{t.fuelForm.gradeNone}</option>
+            {groupsForFuelType(fuelType).map((group) => (
+              <optgroup key={group} label={t.fuelGroups[group]}>
+                {FUEL_GROUPS[group].map((g) => (
+                  <option key={g} value={g}>
+                    {t.fuelGrades[g]}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+            {/* Марка, якої немає серед запропонованих для цього типу пального, лишається вибраною. */}
+            {grade && !groupsForFuelType(fuelType).some((g) => (FUEL_GROUPS[g] as readonly string[]).includes(grade)) && (
+              <option value={grade}>{t.fuelGrades[grade]}</option>
+            )}
+          </select>
+        </Field>
         <label className="check">
           <input type="checkbox" checked={full} onChange={(e) => setFull(e.target.checked)} />
           <span>

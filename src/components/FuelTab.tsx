@@ -38,6 +38,7 @@ const FuelRow = memo(function FuelRow({
     fmtDate(record.date),
     fmtDist(record.odo),
     fmtLiters(record.liters),
+    record.grade ? t.fuelGrades[record.grade] : "",
     calc ? t.units.perLiter(fmtMoney(calc.price)) : "",
     calc?.sinceLast != null ? `+${fmtDist(calc.sinceLast)}` : "",
     record.note,

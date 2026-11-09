@@ -66,6 +66,7 @@ describe("швидкий розрахунок витрати збігаєтьс�
       station: "",
       full: next(4) !== 0,
       note: "",
+      grade: null,
     }));
   };
 

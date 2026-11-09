@@ -1,6 +1,7 @@
 import { carSummary, fuelCalcs, fuelSummary } from "./calc";
 import { CATEGORIES, ITEM_KINDS, categoryLabel, itemKindLabel } from "./constants";
 import { MESSAGES } from "./i18n";
+import { FUEL_GRADES, type FuelGrade } from "./fuelGrades";
 import { parseDecimal } from "./parse";
 import { LANGS, type Lang } from "./prefs";
 import type { RawBackup } from "./backup";
@@ -151,6 +152,7 @@ export function buildSheets(
       col("use", "dec1"),
       col("full"),
       col("station"),
+      col("grade"),
       col("note"),
       col("id"),
     ],
@@ -167,6 +169,7 @@ export function buildSheets(
         round(calc?.consumption ?? null, 2),
         yesNo(r.full),
         r.station,
+        r.grade ? m.fuelGrades[r.grade] : "",
         r.note,
         r.id,
       ]),
@@ -226,6 +229,17 @@ export function buildSheets(
 
   return [summary, service, items, fuel, reminders, wishes];
 }
+
+/** Марка пального з таблиці: назва будь-якою мовою інтерфейсу або сам код. */
+const gradeFromLabel = (label: string): FuelGrade | null => {
+  const key = label.trim().toLocaleLowerCase("uk-UA");
+  if (!key) return null;
+  return (
+    FUEL_GRADES.find(
+      (g) => g.toLowerCase() === key || LANGS.some((l) => MESSAGES[l].fuelGrades[g].toLocaleLowerCase("uk-UA") === key),
+    ) ?? null
+  );
+};
 
 /** Серійний номер дати, як його розуміють Google Таблиці й Excel (днів від 30.12.1899). */
 export const dateToSerial = (iso: string): number => Date.parse(`${iso}T00:00:00Z`) / 86_400_000 + 25_569;
@@ -372,6 +386,7 @@ export function sheetsToBackup(tabs: Record<string, unknown[][] | undefined>): R
         sum: readNum(cell(r, "sum")),
         station: readStr(cell(r, "station")),
         full: !NO.has(lower(cell(r, "full"))),
+        grade: gradeFromLabel(readStr(cell(r, "grade"))),
         note: readStr(cell(r, "note")),
       },
     ];

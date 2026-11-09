@@ -1462,8 +1462,37 @@ a.manual-title {
   min-width: 0;
 }
 
-.stat-sheet:first-child {
+.stat-wide {
   grid-column: 1 / -1;
+}
+
+/* Розділи статистики: витрати й пальне, як місяці в журналах. */
+.stats-section {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.stats-section:first-child {
+  margin-top: 0;
+}
+
+.stat-notes {
+  display: grid;
+  gap: 12px;
+}
+
+.facts {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--fuel);
+  background: var(--fuel-soft);
+  border-radius: 0 var(--r-control) var(--r-control) 0;
 }
 
 .stats-stack {
