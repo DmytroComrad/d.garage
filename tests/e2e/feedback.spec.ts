@@ -418,3 +418,19 @@ test("марка топлива запоминается, статистика �
   await page.getByRole("button", { name: "Понятно" }).click();
   await expect(page.getByRole("button", { name: "Почему цифры приблизительные" })).toBeVisible();
 });
+
+test("тип топлива из профиля машины сужает список марок", async ({ page }) => {
+  await register(page);
+  await addCar(page, "Дизель");
+  await openTab(page, "Данные");
+  await page.getByRole("button", { name: "Профиль машины: Дизель" }).click();
+  await page.getByRole("dialog").getByLabel("Топливо").selectOption("diesel");
+  await page.getByRole("dialog").getByRole("button", { name: "Сохранить" }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+
+  await page.getByRole("button", { name: "+ Заправка" }).first().click();
+  const grade = page.getByRole("dialog").getByLabel("Марка топлива");
+  await expect(grade.locator("optgroup")).toHaveCount(1);
+  await expect(grade.locator("optgroup")).toHaveAttribute("label", "Дизель");
+  await expect(grade.locator("option", { hasText: "А-95" })).toHaveCount(0);
+});

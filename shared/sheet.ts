@@ -1,7 +1,8 @@
+import { BODY_TYPES, EMPTY_PROFILE, FUEL_TYPES } from "./carProfile";
 import { carSummary, fuelCalcs, fuelSummary } from "./calc";
 import { CATEGORIES, ITEM_KINDS, categoryLabel, itemKindLabel } from "./constants";
-import { MESSAGES } from "./i18n";
 import { FUEL_GRADES, type FuelGrade } from "./fuelGrades";
+import { MESSAGES, type Messages } from "./i18n";
 import { parseDecimal } from "./parse";
 import { LANGS, type Lang } from "./prefs";
 import type { RawBackup } from "./backup";
@@ -13,6 +14,7 @@ import type { GarageData, ItemKind } from "./types";
  * з сумою на сайті, а локаль таблиці (кома чи крапка) ні на що не впливає.
  * Назви листів і стовпців — мовою інтерфейсу, а читаються таблиці будь-якою з мов.
  * Відстані завжди в кілометрах: таблиця — це ще й бекап, одиниці в ньому не мають залежати від налаштувань.
+ * Профіль машини — у кінці зведення: кузов і пальне підписані мовою таблиці, а читаються будь-якою.
  */
 export type Cell = string | number | null | { date: string };
 export type ColumnFormat = "text" | "money" | "int" | "dec1" | "liters" | "date";
@@ -65,12 +67,23 @@ export function buildSheets(
       col("avgPrice", "money"),
       col("fuelPerKm", "money"),
       col("since", "date"),
+      // Рік і об'єм — у загальному форматі: без розділювача тисяч і зайвих нулів.
+      col("year"),
+      col("vin"),
+      col("plate"),
+      col("body"),
+      col("engine"),
+      col("fuelType"),
+      col("purchaseDate", "date"),
+      col("purchasePrice", "money"),
+      col("about"),
     ],
     rows: data.cars.map((car) => {
       const service = data.service.filter((r) => r.car === car.id);
       const fuel = data.fuel.filter((r) => r.car === car.id);
       const s = carSummary(service, fuel, today);
       const f = fuelSummary(fuel);
+      const p = car.profile ?? EMPTY_PROFILE;
       return [
         car.name,
         s.total,
@@ -88,6 +101,15 @@ export function buildSheets(
         round(f.avgPrice, 2),
         round(f.perKm, 2),
         dateCell(s.since),
+        p.year,
+        p.vin,
+        p.plate,
+        p.body ? m.carProfile.bodies[p.body] : null,
+        p.engine,
+        p.fuelType ? m.carProfile.fuels[p.fuelType] : null,
+        dateCell(p.purchaseDate),
+        p.purchasePrice,
+        p.about,
       ];
     }),
   };
@@ -287,6 +309,16 @@ const NO = new Set(LANGS.map((l) => MESSAGES[l].sheet.no));
 const kindByLabel = (label: string): ItemKind =>
   ITEM_KINDS.find((kind) => LANGS.some((l) => MESSAGES[l].itemKinds[kind].label === label)) ?? "extra";
 
+/** Код кузова чи пального за підписом будь-якою мовою або за самим кодом. Невідоме — порожньо. */
+const codeByLabel =
+  <K extends string>(codes: readonly K[], labels: (m: Messages) => Record<K, string>) =>
+  (label: string): K | null => {
+    const key = lower(label);
+    return codes.find((code) => code === key || LANGS.some((l) => lower(labels(MESSAGES[l])[code]) === key)) ?? null;
+  };
+const bodyByLabel = codeByLabel(BODY_TYPES, (m) => m.carProfile.bodies);
+const fuelByLabel = codeByLabel(FUEL_TYPES, (m) => m.carProfile.fuels);
+
 /** Категорію з таблиці повертаємо до того рядка, що зберігається в записах. */
 const categoryByLabel = (label: string): string =>
   CATEGORIES.find((c) => c.id === label || LANGS.some((l) => MESSAGES[l].categories[c.key] === label))?.id ?? label;
@@ -341,7 +373,23 @@ export function sheetsToBackup(tabs: Record<string, unknown[][] | undefined>): R
     if (car) names.add(car);
     return car;
   };
-  for (const r of toRows(sheet("summary"))) carOf(r);
+  // Профіль перевіряє те саме злиття, що й для файлу: тут лише повертаємо значення до формату бекапу.
+  const profiles = new Map<string, Record<string, unknown>>();
+  for (const r of toRows(sheet("summary"))) {
+    const car = carOf(r);
+    if (!car) continue;
+    profiles.set(car, {
+      year: readNum(cell(r, "year")),
+      vin: readStr(cell(r, "vin")),
+      plate: readStr(cell(r, "plate")),
+      body: bodyByLabel(readStr(cell(r, "body"))),
+      engine: readNum(cell(r, "engine")),
+      fuelType: fuelByLabel(readStr(cell(r, "fuelType"))),
+      purchaseDate: readDate(cell(r, "purchaseDate")),
+      purchasePrice: readNum(cell(r, "purchasePrice")),
+      about: readStr(cell(r, "about")),
+    });
+  }
 
   const itemsByRecord = new Map<string, Row[]>();
   for (const r of toRows(sheet("items"))) {
@@ -428,7 +476,7 @@ export function sheetsToBackup(tabs: Record<string, unknown[][] | undefined>): R
   });
 
   return {
-    cars: [...names].map((name) => ({ id: name, name })),
+    cars: [...names].map((name) => ({ id: name, name, profile: profiles.get(name) })),
     service,
     fuel,
     reminders,

@@ -1,3 +1,4 @@
+import { withProfile } from "./carProfile";
 import type { GarageData, Op } from "./types";
 
 const upsert = <T extends { id: string }>(list: T[], item: T): T[] => {
@@ -38,8 +39,13 @@ const moveLinked = (data: GarageData, recordId: string, car: string): Pick<Garag
 /** Той самий ефект, що й на сервері: так інтерфейс оновлюється одразу, навіть без мережі. */
 export function applyOp(data: GarageData, op: Op): GarageData {
   switch (op.type) {
-    case "car.put":
-      return { ...data, cars: upsert(data.cars, op.data) };
+    case "car.put": {
+      // Перейменування несе лише назву: профіль машини лишається, яким був.
+      const old = data.cars.find((c) => c.id === op.data.id);
+      return { ...data, cars: upsert(data.cars, old ? { ...old, name: op.data.name } : op.data) };
+    }
+    case "car.profile":
+      return { ...data, cars: data.cars.map((c) => (c.id === op.id ? withProfile(c, op.data) : c)) };
     case "car.del":
       return {
         ...data,
@@ -111,6 +117,7 @@ export function retargetOp(op: Op, aliases: ReadonlyMap<string, string>): Op {
       const car = aliases.get(op.data.car);
       return car ? ({ ...op, data: { ...op.data, car } } as Op) : op;
     }
+    case "car.profile":
     case "car.del": {
       const id = aliases.get(op.id);
       return id ? { ...op, id } : op;

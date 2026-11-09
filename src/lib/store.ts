@@ -36,6 +36,7 @@ export type Dialog =
   | { type: "fuel"; record?: FuelRecord; car?: string }
   | { type: "service"; record?: ServiceRecord; car?: string; draft?: ServiceDraft; wishId?: string }
   | { type: "car" }
+  | { type: "carProfile"; car: string }
   | { type: "reminder"; reminder?: Reminder }
   | { type: "wish"; wish?: Wish }
   | { type: "wishDone"; wish: Wish }
@@ -621,6 +622,7 @@ export function loadDemo(): void {
   const demo = demoRecords(todayISO());
   dispatch(
     { type: "car.put", data: demo.car },
+    { type: "car.profile", id: demo.car.id, data: demo.profile },
     ...demo.service.map((data): Op => ({ type: "service.put", data })),
     ...demo.fuel.map((data): Op => ({ type: "fuel.put", data })),
     ...demo.wishes.map((data): Op => ({ type: "wish.put", data })),
@@ -634,6 +636,7 @@ export function applyBackup(raw: RawBackup): { added: number; skipped: number } 
   const merged = mergeBackup(state.data, raw, genId, todayISO());
   const ops: Op[] = [
     ...merged.cars.map((data): Op => ({ type: "car.put", data })),
+    ...merged.profiles.map(({ car, profile }): Op => ({ type: "car.profile", id: car, data: profile })),
     ...merged.service.map((data): Op => ({ type: "service.put", data })),
     ...merged.fuel.map((data): Op => ({ type: "fuel.put", data })),
     ...merged.reminders.map((data): Op => ({ type: "reminder.put", data })),

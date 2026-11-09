@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { isBodyType, isFuelType, withProfile } from "../shared/carProfile";
 import { LIMITS } from "../shared/constants";
 import { nameKey } from "../shared/format";
 import { isFuelGrade } from "../shared/fuelGrades";
@@ -9,6 +10,11 @@ import { limitApi, readJson } from "./guard";
 import { requireUser } from "./session";
 import { ApiError, type AppEnv, type SessionUser } from "./types";
 
+type CarRow = {
+  id: string; name: string; year: number | null; vin: string | null; plate: string | null; body: string | null;
+  engine: number | null; fuel_type: string | null; purchase_date: string | null; purchase_price: number | null;
+  about: string | null;
+};
 type ServiceRow = {
   id: string; car_id: string; date: string; odo: number | null; cat: string; what: string;
   place: string; sum: number; note: string; items: string;
@@ -58,10 +64,31 @@ export const photoFromRow = (r: PhotoRow): Photo => ({
   storage: r.storage === "r2" || r.storage === "missing" ? r.storage : "drive",
 });
 
+const carFromRow = (r: CarRow): Car =>
+  withProfile(
+    { id: r.id, name: r.name },
+    {
+      year: r.year,
+      vin: r.vin,
+      plate: r.plate,
+      body: isBodyType(r.body) ? r.body : null,
+      engine: r.engine,
+      fuelType: isFuelType(r.fuel_type) ? r.fuel_type : null,
+      purchaseDate: r.purchase_date,
+      purchasePrice: r.purchase_price,
+      about: r.about,
+    },
+  );
+
 /** Усі дані користувача. Кожен запит обмежено його user_id. */
 export async function loadGarage(db: D1Database, userId: string, demo: number): Promise<GarageData> {
   const [cars, service, fuel, reminders, wishes, manuals, photos] = await db.batch([
-    db.prepare("SELECT id, name FROM cars WHERE user_id = ? ORDER BY position, id").bind(userId),
+    db
+      .prepare(
+        `SELECT id, name, year, vin, plate, body, engine, fuel_type, purchase_date, purchase_price, about
+         FROM cars WHERE user_id = ? ORDER BY position, id`,
+      )
+      .bind(userId),
     db.prepare("SELECT * FROM service_records WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM fuel_records WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM reminders WHERE user_id = ?").bind(userId),
@@ -71,7 +98,7 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
   ]);
   return {
     demo: demo === 1,
-    cars: cars.results as Car[],
+    cars: (cars.results as CarRow[]).map(carFromRow),
     service: (service.results as ServiceRow[]).map(
       (r): ServiceRecord => ({
         id: r.id,
@@ -155,6 +182,31 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
           )
           .bind(userId, op.data.id, op.data.name, nameKey(op.data.name)),
       ];
+    case "car.profile": {
+      // Профіль — усі поля разом. Чужої машини запит не знайде: умова по user_id.
+      const p = op.data;
+      return [
+        db
+          .prepare(
+            `UPDATE cars SET year = ?, vin = ?, plate = ?, body = ?, engine = ?, fuel_type = ?,
+               purchase_date = ?, purchase_price = ?, about = ?
+             WHERE user_id = ? AND id = ?`,
+          )
+          .bind(
+            p.year,
+            p.vin,
+            p.plate,
+            p.body,
+            p.engine,
+            p.fuelType,
+            p.purchaseDate,
+            p.purchasePrice,
+            p.about,
+            userId,
+            op.id,
+          ),
+      ];
+    }
     case "car.del":
       return [db.prepare("DELETE FROM cars WHERE user_id = ? AND id = ?").bind(userId, op.id)];
     case "service.put": {

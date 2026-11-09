@@ -20,6 +20,7 @@ import {
   useStore,
   useT,
 } from "../lib/store";
+import { GearIcon } from "./icons";
 
 const handleDriveError = (err: unknown): void => {
   if (err instanceof HttpError && err.code === "drive_disconnected") {
@@ -415,6 +416,15 @@ function CarRow({ id, name }: { id: string; name: string }) {
         maxLength={LIMITS.carNameLength}
       />
       <div className="btn-row">
+        <button
+          type="button"
+          className="btn btn-quiet btn-small btn-square"
+          aria-label={t.carProfile.open(name)}
+          title={t.carProfile.title}
+          onClick={() => openDialog({ type: "carProfile", car: id })}
+        >
+          <GearIcon size={18} />
+        </button>
         <button type="button" className="btn btn-quiet btn-small" disabled={value.trim() === name} onClick={save}>
           {t.common.save}
         </button>

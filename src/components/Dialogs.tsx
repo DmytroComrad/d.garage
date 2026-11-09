@@ -23,6 +23,7 @@ import {
   type Theme,
 } from "../lib/store";
 import { CarForm } from "./forms/CarForm";
+import { CarProfileForm } from "./forms/CarProfileForm";
 import { FuelForm } from "./forms/FuelForm";
 import { ManualForm } from "./forms/ManualForm";
 import { ReminderForm } from "./forms/ReminderForm";
@@ -467,6 +468,7 @@ export function Dialogs() {
         />
       )}
       {dialog?.type === "car" && <CarForm />}
+      {dialog?.type === "carProfile" && <CarProfileForm key={dialog.car} carId={dialog.car} />}
       {dialog?.type === "reminder" && <ReminderForm key={dialog.reminder?.id ?? "new"} reminder={dialog.reminder} />}
       {dialog?.type === "wish" && <WishForm key={dialog.wish?.id ?? "new"} wish={dialog.wish} />}
       {dialog?.type === "wishDone" && <WishDoneDialog wish={dialog.wish} />}

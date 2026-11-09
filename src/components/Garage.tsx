@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { profileSummary } from "../../shared/carProfile";
 import { fmtConsumption, fmtDate, fmtDist, fmtMoney0, fmtPerDist } from "../../shared/format";
 import { reminderText } from "../../shared/reminders";
 import {
@@ -182,6 +183,8 @@ function Hero({ carId, actionsRef }: { carId: string; actionsRef: RefObject<HTML
   const t = useT();
   const unit = useStore((s) => s.prefs.unit);
   const name = useStore((s) => s.data.cars.find((c) => c.id === carId)?.name);
+  const profile = useStore((s) => s.data.cars.find((c) => c.id === carId)?.profile);
+  const profileLine = profileSummary(profile, t);
   const { summary: s, fuelTotals: f } = useCarView(carId);
 
   return (
@@ -189,6 +192,11 @@ function Hero({ carId, actionsRef }: { carId: string; actionsRef: RefObject<HTML
       <div className="hero-top">
         <div className="hero-title">
           <h1 className="display">{name}</h1>
+          {profileLine && (
+            <p className="hero-profile">
+              <Mono text={profileLine} />
+            </p>
+          )}
           <p className="hero-sub">
             <Mono text={s.hasRecords ? t.hero.since(fmtDate(s.since), fmtDist(s.driven)) : t.hero.noRecords} />
           </p>

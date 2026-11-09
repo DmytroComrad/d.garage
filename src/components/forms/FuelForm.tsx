@@ -30,7 +30,8 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
   const photos = useStore((s) => s.data.photos);
 
   const [car, setCar] = useState(record?.car ?? carProp ?? active ?? cars[0]?.id ?? "");
-  const fuelType = useStore((s) => (s.data.cars.find((c) => c.id === car) as { fuelType?: string | null } | undefined)?.fuelType);
+  // Тип пального з профілю машини звужує список марок.
+  const fuelType = useStore((s) => s.data.cars.find((c) => c.id === car)?.profile?.fuelType ?? null);
   const [date, setDate] = useState(record?.date ?? todayISO());
   const [odo, setOdo] = useState(record ? String(fromKm(record.odo)) : "");
   const [liters, setLiters] = useState(record ? numInput(record.liters) : "");
