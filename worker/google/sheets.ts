@@ -14,6 +14,7 @@ import {
 } from "../../shared/sheet";
 import type { SheetExportResponse, SheetImportResponse } from "../../shared/types";
 import { loadGarage } from "../data";
+import { nbuToday, ratesFor } from "../fx";
 import { limitApi, readJson } from "../guard";
 import { requestLang } from "../messages";
 import { requireUser } from "../session";
@@ -191,12 +192,15 @@ export const sheets = new Hono<AppEnv>();
 sheets.post("/export", requireUser, async (c) => {
   const user = c.get("user");
   await limitApi(c, `sheet:${user.id}`);
-  const { dateFormat } = await readJson(c, sheetExportSchema);
+  const { dateFormat, currency } = await readJson(c, sheetExportSchema);
   const lang = requestLang(c);
   const { conn, token } = await requireDrive(c.env, user.id);
 
   const garage = await loadGarage(c.env.DB, user.id, user.demo);
-  const content = buildSheets(garage, todayISO(), lang);
+  const today = todayISO();
+  // Курси лише ті, що вже є в базі: НБУ тут не чекаємо, бо цей запит і так ходить до Google.
+  const { rates } = await ratesFor(c.env, garage, nbuToday(), { fill: false });
+  const content = buildSheets(garage, today, lang, { currency, rates });
 
   const existing = conn.sheet_id ? await openSpreadsheet(token, conn.sheet_id) : null;
   let spreadsheetId: string;

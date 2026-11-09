@@ -1,5 +1,6 @@
 import { useId, useState, type FormEvent } from "react";
 import { LIMITS } from "../../../shared/constants";
+import { CURRENCY_SYMBOLS, type Currency } from "../../../shared/currency";
 import { fmtDist, fmtMoney, fmtNum, genId, numInput, todayISO, unitLabel } from "../../../shared/format";
 import { FUEL_GROUPS, groupsForFuelType, isFuelGrade, lastGrade, type FuelGrade } from "../../../shared/fuelGrades";
 import { parseDecimal, parseMoney, parseOdo } from "../../../shared/parse";
@@ -11,12 +12,14 @@ import {
   CarSelect,
   Field,
   FormFooter,
+  MoneyInput,
   Suggest,
   finishSave,
   reminderForRecord,
   reminderOps,
   useLinkedReminder,
   usePrevOdo,
+  useMainCurrency,
   useReminderDraft,
 } from "./common";
 import { PhotoField } from "./PhotoField";
@@ -36,6 +39,8 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
   const [odo, setOdo] = useState(record ? String(fromKm(record.odo)) : "");
   const [liters, setLiters] = useState(record ? numInput(record.liters) : "");
   const [sum, setSum] = useState(record ? numInput(record.sum) : "");
+  const main = useMainCurrency();
+  const [currency, setCurrency] = useState<Currency>(record?.currency ?? main);
   const [station, setStation] = useState(record?.station ?? "");
   // Нова заправка пропонує ту саму марку, що й минулого разу.
   const [grade, setGrade] = useState<FuelGrade | "">(record ? (record.grade ?? "") : (lastGrade(allFuel, car) ?? ""));
@@ -88,6 +93,7 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
       odo: baseOdo,
       liters: parsedLiters,
       sum: parsedSum,
+      currency,
       station: station.trim(),
       full,
       note: note.trim(),
@@ -125,8 +131,13 @@ export function FuelForm({ record, car: carProp }: { record?: FuelRecord; car?: 
           <Field label={t.fuelForm.liters}>
             <input inputMode="decimal" value={liters} onChange={(e) => setLiters(e.target.value)} />
           </Field>
-          <Field label={t.serviceForm.sum} hint={price != null ? `≈ ${t.units.perLiter(fmtMoney(price))}` : undefined}>
-            <input inputMode="decimal" value={sum} onChange={(e) => setSum(e.target.value)} />
+          <Field
+            label={t.serviceForm.sum(CURRENCY_SYMBOLS[currency])}
+            hint={price != null ? `≈ ${t.units.perLiter(fmtMoney(price, currency))}` : undefined}
+          >
+            <MoneyInput currency={currency} onCurrency={setCurrency}>
+              <input inputMode="decimal" value={sum} onChange={(e) => setSum(e.target.value)} />
+            </MoneyInput>
           </Field>
         </div>
         <Field label={t.fuelForm.station}>

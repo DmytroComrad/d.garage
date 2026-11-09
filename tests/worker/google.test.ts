@@ -531,7 +531,10 @@ describe("Google Таблиця", () => {
     const fuel = tab("Заправки");
     expect(fuel[1][3]).toBe(37.74);
     expect(fuel[1][4]).toBe(2939.95);
-    expect(fuel[2][7]).toBe(7.84);
+    // Валюта — в окремому стовпці одразу за сумою.
+    expect(fuel[0][5]).toBe("Валюта");
+    expect(fuel[1][5]).toBe("UAH");
+    expect(fuel[2][8]).toBe(7.84);
 
     const summary = tab("Сводка");
     const col = (title: string) => summary[0].indexOf(title);

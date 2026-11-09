@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { LIMITS } from "../../../shared/constants";
+import { CURRENCY_SYMBOLS, type Currency } from "../../../shared/currency";
 import { genId, numInput, todayISO } from "../../../shared/format";
 import { normalizeUrl, parsePriceRange } from "../../../shared/parse";
 import type { Wish } from "../../../shared/types";
 import { closeDialog, dispatch, toast, useStore, useT } from "../../lib/store";
 import { CloseIcon, PlusIcon } from "../icons";
 import { Modal } from "../Modal";
-import { CarSelect, Field, FormFooter } from "./common";
+import { CarSelect, Field, FormFooter, MoneyInput, useMainCurrency } from "./common";
 
 /** Хотілка: що зробити, приблизна ціна, посилання на товари. */
 export function WishForm({ wish }: { wish?: Wish }) {
@@ -18,6 +19,8 @@ export function WishForm({ wish }: { wish?: Wish }) {
   const [price, setPrice] = useState(
     wish?.price == null ? "" : wish.priceMax != null ? `${numInput(wish.price)}-${numInput(wish.priceMax)}` : numInput(wish.price),
   );
+  const main = useMainCurrency();
+  const [currency, setCurrency] = useState<Currency>(wish?.currency ?? main);
   const [links, setLinks] = useState<string[]>(wish?.links.length ? wish.links : [""]);
   const [note, setNote] = useState(wish?.note ?? "");
   const [error, setError] = useState("");
@@ -45,6 +48,7 @@ export function WishForm({ wish }: { wish?: Wish }) {
         title: title.trim(),
         price: parsedPrice.price,
         priceMax: parsedPrice.priceMax,
+        currency,
         links: urls,
         note: note.trim(),
         added: wish?.added ?? todayISO(),
@@ -77,8 +81,10 @@ export function WishForm({ wish }: { wish?: Wish }) {
             maxLength={LIMITS.titleLength}
           />
         </Field>
-        <Field label={t.wishForm.price} hint={t.wishForm.priceHint}>
-          <input value={price} onChange={(e) => setPrice(e.target.value)} />
+        <Field label={t.wishForm.price(CURRENCY_SYMBOLS[currency])} hint={t.wishForm.priceHint}>
+          <MoneyInput currency={currency} onCurrency={setCurrency}>
+            <input value={price} onChange={(e) => setPrice(e.target.value)} />
+          </MoneyInput>
         </Field>
         <div className="field">
           <span className="field-label">{t.wishForm.links}</span>

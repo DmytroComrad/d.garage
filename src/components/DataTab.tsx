@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import { backupFileName, backupToText, buildBackup, parseBackupText } from "../../shared/backup";
 import { LIMITS } from "../../shared/constants";
 import { fmtDateTime, nameKey, todayISO } from "../../shared/format";
+import { mainCurrency } from "../../shared/prefs";
 import { buildSheets } from "../../shared/sheet";
 import type { SheetExportResponse, SheetImportResponse } from "../../shared/types";
 import { HttpError, errorText, postJson } from "../lib/api";
@@ -248,6 +249,7 @@ function SheetCard() {
   const drive = useStore((s) => s.drive);
   const driveEnabled = useStore((s) => s.config.drive);
   const prefs = useStore((s) => s.prefs);
+  const rates = useStore((s) => s.rates);
   const [busy, setBusy] = useState<"export" | "import" | null>(null);
   const [message, setMessage] = useState("");
 
@@ -256,7 +258,10 @@ function SheetCard() {
     setMessage("");
     try {
       await flush();
-      const res = await postJson<SheetExportResponse>("/api/google/sheet/export", { dateFormat: prefs.dateFormat });
+      const res = await postJson<SheetExportResponse>("/api/google/sheet/export", {
+        dateFormat: prefs.dateFormat,
+        currency: mainCurrency(prefs),
+      });
       setDrive({ ...getState().drive, sheetUrl: res.url, sheetExportedAt: res.exportedAt });
       toast(t.data.sheetUpdated);
     } catch (err) {
@@ -284,7 +289,7 @@ function SheetCard() {
   const downloadXlsx = async () => {
     const { buildXlsx } = await import("../lib/xlsx");
     const today = todayISO();
-    const bytes = buildXlsx(buildSheets(data, today, prefs.lang), prefs.dateFormat);
+    const bytes = buildXlsx(buildSheets(data, today, prefs.lang, { currency: mainCurrency(prefs), rates }), prefs.dateFormat);
     downloadFile(
       `d-garage-${today}.xlsx`,
       new Uint8Array(bytes),

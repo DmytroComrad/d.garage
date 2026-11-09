@@ -11,6 +11,7 @@ const fill = (odo: number, liters: number, sum: number, station: string, grade: 
   odo,
   liters,
   sum,
+  currency: "UAH",
   station,
   full,
   note: "",

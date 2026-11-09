@@ -63,6 +63,7 @@ describe("швидкий розрахунок витрати збігаєтьс�
       odo: 1000 + next(Math.max(2, size)) * 50,
       liters: 10 + next(4000) / 100,
       sum: 500 + next(300000) / 100,
+      currency: "UAH" as const,
       station: "",
       full: next(4) !== 0,
       note: "",

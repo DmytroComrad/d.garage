@@ -1,3 +1,4 @@
+import type { FxRates } from "../../shared/currency";
 import type { DriveStatus, GarageData, Op, User } from "../../shared/types";
 
 // Ключі зі старою назвою проєкту: зміна стерла б кеш і черзі незбережених змін у тих, хто вже користується.
@@ -9,6 +10,8 @@ export type CachedState = {
   user: User;
   data: GarageData;
   drive: DriveStatus;
+  /** Кеш зі старої версії курсів не має. */
+  rates?: FxRates;
   queue: Op[];
   etag: string | null;
 };

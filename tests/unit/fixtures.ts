@@ -3,11 +3,11 @@ import type { FuelRecord, ServiceRecord } from "../../shared/types";
 export const CAR = "car1";
 
 const svc = (id: string, date: string, odo: number | null, cat: string, what: string, sum: number): ServiceRecord => ({
-  id, car: CAR, date, odo, cat, what, where: "Автосервис", sum, note: "", items: [],
+  id, car: CAR, date, odo, cat, what, where: "Автосервис", sum, currency: "UAH", note: "", items: [],
 });
 
 const fl = (id: string, date: string, odo: number, liters: number, sum: number, full = true): FuelRecord => ({
-  id, car: CAR, date, odo, liters, sum, station: "АЗС", full, note: "", grade: null,
+  id, car: CAR, date, odo, liters, sum, currency: "UAH", station: "АЗС", full, note: "", grade: null,
 });
 
 export const service: ServiceRecord[] = [

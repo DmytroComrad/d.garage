@@ -88,7 +88,7 @@ describe("ціна хотілки «від-до»", () => {
       { price: null, priceMax: null },
     ]);
     expect(total).toEqual({ min: 5000, max: 7000 });
-    expect(fmtMoneyRange(total.min, total.max).replace(/\s/g, " ")).toBe("5,000–7,000 ₴");
-    expect(fmtMoneyRange(1000, null).replace(/\s/g, " ")).toBe("1,000 ₴");
+    expect(fmtMoneyRange(total.min, total.max, "UAH").replace(/\s/g, " ")).toBe("5,000–7,000 ₴");
+    expect(fmtMoneyRange(1000, null, "UAH").replace(/\s/g, " ")).toBe("1,000 ₴");
   });
 });

@@ -707,6 +707,15 @@ td,
   line-height: 1.2;
 }
 
+/* Та сама головна сума в додатковій валюті: дрібніше, під основною. */
+.money-second {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
 /* Лампы: напоминания на панели */
 
 .lamps {
@@ -1812,6 +1821,22 @@ input[type="date"] {
 .input-with-action {
   position: relative;
   display: block;
+}
+
+/* Сума й валюта поруч: «[ 2 000 ] [₴]». Валюта вузька, сума забирає решту. */
+.input-with-currency {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: stretch;
+}
+
+select.currency-select {
+  width: auto;
+  min-width: 56px;
+  padding: 9px 10px;
+  font-family: var(--font-mono);
+  text-align: center;
 }
 
 .input-with-action input {

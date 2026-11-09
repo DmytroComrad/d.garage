@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { isBodyType, isFuelType, withProfile } from "../shared/carProfile";
 import { LIMITS } from "../shared/constants";
+import { readCurrency } from "../shared/currency";
 import { nameKey } from "../shared/format";
 import { isFuelGrade } from "../shared/fuelGrades";
 import { retargetOp } from "../shared/ops";
@@ -29,10 +30,10 @@ type CarRow = {
 };
 type ServiceRow = {
   id: string; car_id: string; date: string; odo: number | null; cat: string; what: string;
-  place: string; sum: number; note: string; items: string;
+  place: string; sum: number; currency: string; note: string; items: string;
 };
 type FuelRow = {
-  id: string; car_id: string; date: string; odo: number; liters: number; sum: number;
+  id: string; car_id: string; date: string; odo: number; liters: number; sum: number; currency: string;
   station: string; full: number; note: string; grade: string | null;
 };
 type ReminderRow = {
@@ -40,8 +41,8 @@ type ReminderRow = {
   done: number; done_date: string | null; notified: Reminder["notified"]; record_id: string | null;
 };
 type WishRow = {
-  id: string; car_id: string; title: string; price: number | null; price_max: number | null; links: string;
-  note: string; added: string; done: number; done_date: string | null; record_id: string | null;
+  id: string; car_id: string; title: string; price: number | null; price_max: number | null; currency: string;
+  links: string; note: string; added: string; done: number; done_date: string | null; record_id: string | null;
 };
 export type ManualRow = {
   id: string; car_id: string; title: string; url: string | null; note: string; added: string;
@@ -132,6 +133,7 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
         what: r.what,
         where: r.place,
         sum: r.sum,
+        currency: readCurrency(r.currency),
         note: r.note,
         items: JSON.parse(r.items),
       }),
@@ -144,6 +146,7 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
         odo: r.odo,
         liters: r.liters,
         sum: r.sum,
+        currency: readCurrency(r.currency),
         station: r.station,
         full: r.full === 1,
         grade: isFuelGrade(r.grade) ? r.grade : null,
@@ -170,6 +173,7 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
         title: r.title,
         price: r.price,
         priceMax: r.price_max,
+        currency: readCurrency(r.currency),
         links: JSON.parse(r.links),
         note: r.note,
         added: r.added,
@@ -250,14 +254,27 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
       return [
         db
           .prepare(
-            `INSERT INTO service_records (user_id, id, car_id, date, odo, cat, what, place, sum, note, items)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO service_records (user_id, id, car_id, date, odo, cat, what, place, sum, currency, note, items)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (user_id, id) DO UPDATE SET
                car_id = excluded.car_id, date = excluded.date, odo = excluded.odo, cat = excluded.cat,
-               what = excluded.what, place = excluded.place, sum = excluded.sum, note = excluded.note,
-               items = excluded.items`,
+               what = excluded.what, place = excluded.place, sum = excluded.sum, currency = excluded.currency,
+               note = excluded.note, items = excluded.items`,
           )
-          .bind(userId, r.id, r.car, r.date, r.odo, r.cat, r.what, r.where, r.sum, r.note, JSON.stringify(r.items)),
+          .bind(
+            userId,
+            r.id,
+            r.car,
+            r.date,
+            r.odo,
+            r.cat,
+            r.what,
+            r.where,
+            r.sum,
+            r.currency,
+            r.note,
+            JSON.stringify(r.items),
+          ),
         ...moveLinked(db, userId, r.id, r.car),
       ];
     }
@@ -273,14 +290,27 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
       return [
         db
           .prepare(
-            `INSERT INTO fuel_records (user_id, id, car_id, date, odo, liters, sum, station, full, note, grade)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO fuel_records (user_id, id, car_id, date, odo, liters, sum, currency, station, full, note, grade)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (user_id, id) DO UPDATE SET
                car_id = excluded.car_id, date = excluded.date, odo = excluded.odo, liters = excluded.liters,
-               sum = excluded.sum, station = excluded.station, full = excluded.full, note = excluded.note,
-               grade = excluded.grade`,
+               sum = excluded.sum, currency = excluded.currency, station = excluded.station, full = excluded.full,
+               note = excluded.note, grade = excluded.grade`,
           )
-          .bind(userId, r.id, r.car, r.date, r.odo, r.liters, r.sum, r.station, r.full ? 1 : 0, r.note, r.grade),
+          .bind(
+            userId,
+            r.id,
+            r.car,
+            r.date,
+            r.odo,
+            r.liters,
+            r.sum,
+            r.currency,
+            r.station,
+            r.full ? 1 : 0,
+            r.note,
+            r.grade,
+          ),
         ...moveLinked(db, userId, r.id, r.car),
       ];
     }
@@ -311,11 +341,11 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
       return [
         db
           .prepare(
-            `INSERT INTO wishes (user_id, id, car_id, title, price, price_max, links, note, added, done, done_date, record_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO wishes (user_id, id, car_id, title, price, price_max, currency, links, note, added, done, done_date, record_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (user_id, id) DO UPDATE SET
                car_id = excluded.car_id, title = excluded.title, price = excluded.price, price_max = excluded.price_max,
-               links = excluded.links,
+               currency = excluded.currency, links = excluded.links,
                note = excluded.note, added = excluded.added, done = excluded.done, done_date = excluded.done_date,
                record_id = excluded.record_id`,
           )
@@ -326,6 +356,7 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
             w.title,
             w.price,
             w.priceMax,
+            w.currency,
             JSON.stringify(w.links),
             w.note,
             w.added,

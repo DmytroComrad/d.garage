@@ -64,9 +64,9 @@ describe("таблиця показує те саме, що й сайт", () => 
   });
 
   it("сума рядків дорівнює підсумку: формули не можуть розійтися", () => {
-    expect(sheetColumnTotal(byTitle(SHEET_TITLES.service), "Сумма, ₴")).toBe(site.serviceTotal);
-    expect(sheetColumnTotal(byTitle(SHEET_TITLES.fuel), "Сумма, ₴")).toBe(site.fuelTotal);
-    expect(sheetColumnTotal(byTitle(SHEET_TITLES.items), "Сумма, ₴")).toBe(withItems.sum);
+    expect(sheetColumnTotal(byTitle(SHEET_TITLES.service), "Сумма")).toBe(site.serviceTotal);
+    expect(sheetColumnTotal(byTitle(SHEET_TITLES.fuel), "Сумма")).toBe(site.fuelTotal);
+    expect(sheetColumnTotal(byTitle(SHEET_TITLES.items), "Сумма")).toBe(withItems.sum);
   });
 
   it("витрата реальна, без 918 л/100 км, і це число, а не текст", () => {

@@ -90,7 +90,8 @@ function FuelNote() {
 export function StatsTab({ carId }: { carId: string }) {
   const t = useT();
   const unit = useStore((s) => s.prefs.unit);
-  const { service, fuel, summary: s, fuelTotals: f } = useCarView(carId);
+  // Гроші — у записах, перерахованих в основну валюту за курсом на дату кожного.
+  const { serviceMain: service, fuelMain: fuel, summary: s, fuelTotals: f } = useCarView(carId);
   const months = useMemo(() => monthly(service, fuel, todayISO()), [service, fuel]);
   const kinds = useMemo(() => itemKindTotals(service), [service]);
   const stations = useMemo(() => fuelGroups(fuel, (r) => stationKey(r.station)), [fuel]);

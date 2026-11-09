@@ -1,7 +1,7 @@
 import { memo, useId, useMemo, useState } from "react";
 import { sumMoney } from "../../shared/calc";
 import { ITEM_KINDS, categoryLabel, itemKindLabel } from "../../shared/constants";
-import { fmtDate, fmtDist, fmtMoney, fmtMoney0, fmtPerDist } from "../../shared/format";
+import { fmtDate, fmtDist, fmtMoney, fmtMoney0, fmtPerDist, fmtTotal } from "../../shared/format";
 import { EMPTY_INPUTS, filterFromInputs, filterRecords, recordMonths, sortRecords, sortsByDate } from "../../shared/listview";
 import type { Photo, ServiceRecord, Wish } from "../../shared/types";
 import { deleteRecords, openDialog, toast, unlinkWishes, useCarView, useStore, useT } from "../lib/store";
@@ -10,6 +10,7 @@ import { WarnIcon } from "./icons";
 import { FilterPanel, FilterResult, ListControls, hasInputs, useListView } from "./ListTools";
 import {
   EmptyState,
+  HeadlineMoney,
   KeyValue,
   LedgerRow,
   MoneyBars,
@@ -37,7 +38,7 @@ function ItemBreakdown({ record }: { record: ServiceRecord }) {
       <button type="button" className="rec-items-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
         {totals.map((row) => (
           <span key={row.kind} className="rec-kind">
-            {itemKindLabel(row.kind)} <b>{fmtMoney0(row.sum)}</b>
+            {itemKindLabel(row.kind)} <b>{fmtMoney0(row.sum, record.currency)}</b>
           </span>
         ))}
         <span className="rec-items-more">{open ? t.service.collapse : t.service.details}</span>
@@ -47,7 +48,7 @@ function ItemBreakdown({ record }: { record: ServiceRecord }) {
           {record.items.map((it) => (
             <li key={it.id}>
               <span>{it.name || itemKindLabel(it.kind)}</span>
-              <b>{fmtMoney(it.sum)}</b>
+              <b>{fmtMoney(it.sum, record.currency)}</b>
             </li>
           ))}
         </ul>
@@ -75,7 +76,7 @@ const ServiceRow = memo(function ServiceRow({
       kind="service"
       title={record.what || categoryLabel(record.cat)}
       meta={meta.filter(Boolean).join(" · ")}
-      sum={fmtMoney(record.sum)}
+      sum={fmtMoney(record.sum, record.currency)}
       badge={
         <>
           {stale && <span className="tag tag-bad">{t.stale.tag}</span>}
@@ -117,7 +118,7 @@ function StaleRecords({ records, wishes }: { records: ServiceRecord[]; wishes: W
               {r.what}
             </button>
             <span className="muted num">
-              {fmtDate(r.date)} · {fmtMoney0(r.sum)}
+              {fmtDate(r.date)} · {fmtMoney0(r.sum, r.currency)}
             </span>
           </li>
         ))}
@@ -163,14 +164,14 @@ function StaleRecords({ records, wishes }: { records: ServiceRecord[]; wishes: W
 export function ServiceTab({ carId }: { carId: string }) {
   const t = useT();
   const unit = useStore((s) => s.prefs.unit);
-  const { service, photosByRecord, summary: s, staleRecords } = useCarView(carId);
+  const { service, photosByRecord, summary: s, totals, second, money, staleRecords } = useCarView(carId);
   const [view, setView] = useListView("service");
   const panelId = useId();
   const stale = useMemo(() => sortRecords(service, "new").filter((r) => staleRecords.has(r.id)), [service, staleRecords]);
   const months = useMemo(() => recordMonths(service), [service]);
   const shown = useMemo(
-    () => sortRecords(filterRecords(service, filterFromInputs(view.inputs, unit)), view.sort),
-    [service, view.inputs, view.sort, unit],
+    () => sortRecords(filterRecords(service, filterFromInputs(view.inputs, unit)), view.sort, money.sumOf),
+    [service, view.inputs, view.sort, unit, money],
   );
   const selection = useSelection(shown.map((r) => r.id));
   const row = (r: ServiceRecord) => (
@@ -188,10 +189,15 @@ export function ServiceTab({ carId }: { carId: string }) {
       <aside className="side">
         <Summary title={t.service.summary}>
           <dl className="kvs">
-            <KeyValue label={t.service.totalIn} value={fmtMoney0(s.total)} big tone="service" />
-            <KeyValue label={t.service.serviceAndPurchases} value={fmtMoney0(s.serviceTotal)} />
-            <KeyValue label={t.service.fuel} value={fmtMoney0(s.fuelTotal)} />
-            <KeyValue label={t.service.thisYear} value={fmtMoney0(s.thisYear)} />
+            <KeyValue
+              label={t.service.totalIn}
+              value={<HeadlineMoney total={totals.all} second={second} />}
+              big
+              tone="service"
+            />
+            <KeyValue label={t.service.serviceAndPurchases} value={fmtTotal(totals.service)} />
+            <KeyValue label={t.service.fuel} value={fmtTotal(totals.fuel)} />
+            <KeyValue label={t.service.thisYear} value={fmtTotal(totals.thisYear)} />
             <hr />
             <KeyValue label={t.service.currentOdo} value={fmtDist(s.currentOdo)} />
             <KeyValue label={t.service.since} value={fmtDate(s.since)} />
@@ -240,7 +246,7 @@ export function ServiceTab({ carId }: { carId: string }) {
               <FilterResult
                 shown={shown.length}
                 total={service.length}
-                sum={fmtMoney0(sumMoney(shown.map((r) => r.sum)))}
+                sum={fmtTotal(money.total(shown))}
                 onReset={() => setView({ inputs: EMPTY_INPUTS })}
               />
             )}
@@ -248,7 +254,7 @@ export function ServiceTab({ carId }: { carId: string }) {
               <EmptyState title={t.list.nothingTitle} text={t.list.nothingText} />
             ) : sortsByDate(view.sort) ? (
               groupByMonth(shown).map(([key, records]) => (
-                <MonthGroup key={key} monthKey={key} total={fmtMoney0(sumMoney(records.map((r) => r.sum)))}>
+                <MonthGroup key={key} monthKey={key} total={fmtTotal(money.total(records))}>
                   {records.map(row)}
                 </MonthGroup>
               ))

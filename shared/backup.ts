@@ -12,6 +12,7 @@ import {
 } from "./carProfile";
 import { BACKUP_APP, LEGACY_BACKUP_APPS, LIMITS, OTHER_CATEGORY } from "./constants";
 import { contactFields, phoneDigits } from "./contacts";
+import { readCurrency, type Currency } from "./currency";
 import { genId, nameKey } from "./format";
 import { isFuelGrade } from "./fuelGrades";
 import { isEmailAddress, isHttpUrl, isIsoDate, isPhone } from "./parse";
@@ -143,8 +144,9 @@ const odometer = (v: unknown): number | null | undefined => {
   return Math.round(n);
 };
 
-const dupKey = (type: string, date: string, carName: string, odo: number | null, sum: number): string =>
-  [type, date, nameKey(carName), odo ?? "", kopecks(sum)].join("|");
+/** Валюта входить у ключ: 100 ₴ і 100 $ того самого дня — різні записи. Без валюти в бекапі — гривня. */
+const dupKey = (type: string, date: string, carName: string, odo: number | null, sum: number, currency: Currency): string =>
+  [type, date, nameKey(carName), odo ?? "", kopecks(sum), currency].join("|");
 
 const reminderKey = (carName: string, title: string, dueOdo: number | null, dueDate: string | null): string =>
   [nameKey(carName), nameKey(title), dueOdo ?? "", dueDate ?? ""].join("|");
@@ -174,7 +176,7 @@ export type MergeResult = {
 /**
  * Відновлення зливає дані, а не замінює (п. 3.9):
  * машини зіставляються за назвою без регістру, записи отримують нові id,
- * дублікат = збіг типу, дати, назви машини, пробігу і суми в копійках.
+ * дублікат = збіг типу, дати, назви машини, пробігу, суми в копійках і валюти.
  * Межі ті самі, що на сервері: те, що він відхилить, не рахується доданим.
  * Профіль машини з бекапу заповнює лише порожній: наявний ніколи не перезаписується.
  */
@@ -212,8 +214,8 @@ export function mergeBackup(
   }
 
   const seen = new Set<string>();
-  for (const r of current.service) seen.add(dupKey("s", r.date, nameById.get(r.car) ?? "", r.odo, r.sum));
-  for (const r of current.fuel) seen.add(dupKey("f", r.date, nameById.get(r.car) ?? "", r.odo, r.sum));
+  for (const r of current.service) seen.add(dupKey("s", r.date, nameById.get(r.car) ?? "", r.odo, r.sum, r.currency));
+  for (const r of current.fuel) seen.add(dupKey("f", r.date, nameById.get(r.car) ?? "", r.odo, r.sum, r.currency));
   const seenReminders = new Set(
     current.reminders.map((r) => reminderKey(nameById.get(r.car) ?? "", r.title, r.dueOdo, r.dueDate)),
   );
@@ -235,7 +237,8 @@ export function mergeBackup(
       skipped++;
       continue;
     }
-    const key = dupKey("s", r.date, car.name, odo, sum);
+    const currency = readCurrency(r.currency);
+    const key = dupKey("s", r.date, car.name, odo, sum, currency);
     if (seen.has(key)) {
       skipped++;
       continue;
@@ -260,6 +263,7 @@ export function mergeBackup(
       what,
       where: str(r.where, LIMITS.placeLength),
       sum,
+      currency,
       note: str(r.note, LIMITS.noteLength),
       items,
     });
@@ -284,7 +288,8 @@ export function mergeBackup(
       skipped++;
       continue;
     }
-    const key = dupKey("f", r.date, car.name, odo, sum);
+    const currency = readCurrency(r.currency);
+    const key = dupKey("f", r.date, car.name, odo, sum, currency);
     if (seen.has(key)) {
       skipped++;
       continue;
@@ -299,6 +304,7 @@ export function mergeBackup(
       odo,
       liters,
       sum,
+      currency,
       station: str(r.station, LIMITS.placeLength),
       full: r.full !== false,
       note: str(r.note, LIMITS.noteLength),
@@ -359,6 +365,7 @@ export function mergeBackup(
       car: car.id,
       title,
       ...priceRange(r.price, r.priceMax),
+      currency: readCurrency(r.currency),
       links: (Array.isArray(r.links) ? r.links : [])
         .map((l) => (typeof l === "string" ? l.trim() : ""))
         .filter(isHttpUrl)

@@ -62,11 +62,11 @@ const state = async (client: ReturnType<typeof makeClient>) =>
 
 const service = (id: string, car = "car1"): Op => ({
   type: "service.put",
-  data: { id, car, date: "2026-08-17", odo: 1000, cat: "Ремонт", what: "Замена", where: "", sum: 100, note: "", items: [] },
+  data: { id, car, date: "2026-08-17", odo: 1000, cat: "Ремонт", what: "Замена", where: "", sum: 100, currency: "UAH", note: "", items: [] },
 });
 const fuel = (id: string, car = "car1", odo = 2000): Op => ({
   type: "fuel.put",
-  data: { id, car, date: "2026-08-21", odo, liters: 37.74, sum: 2939.95, station: "", full: true, note: "", grade: null },
+  data: { id, car, date: "2026-08-21", odo, liters: 37.74, sum: 2939.95, currency: "UAH", station: "", full: true, note: "", grade: null },
 });
 const car = (id = "car1", name = "Машина"): Op => ({ type: "car.put", data: { id, name } });
 

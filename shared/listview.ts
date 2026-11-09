@@ -78,8 +78,11 @@ const byOdo = (dir: 1 | -1) => (a: Rec, b: Rec): number => {
   return (a.odo - b.odo) * dir;
 };
 
-/** Однакові суми чи пробіги лишаються в порядку «нові зверху»: сортування стабільне. */
-export function sortRecords<T extends Rec>(list: T[], sort: RecordSort): T[] {
+/**
+ * Однакові суми чи пробіги лишаються в порядку «нові зверху»: сортування стабільне.
+ * `sumOf` — сума для порівняння: записи в різних валютах порівнюються в основній.
+ */
+export function sortRecords<T extends Rec>(list: T[], sort: RecordSort, sumOf: (r: T) => number = (r) => r.sum): T[] {
   const newest = [...list].sort(newestFirst);
   switch (sort) {
     case "new":
@@ -87,9 +90,9 @@ export function sortRecords<T extends Rec>(list: T[], sort: RecordSort): T[] {
     case "old":
       return newest.reverse();
     case "expensive":
-      return newest.sort((a, b) => b.sum - a.sum);
+      return newest.sort((a, b) => sumOf(b) - sumOf(a));
     case "cheap":
-      return newest.sort((a, b) => a.sum - b.sum);
+      return newest.sort((a, b) => sumOf(a) - sumOf(b));
     case "odoHigh":
       return newest.sort(byOdo(-1));
     case "odoLow":
@@ -142,14 +145,15 @@ export type WishSort = (typeof WISH_SORTS)[number];
  * Хотілки: невиконані завжди над виконаними, сортування — всередині кожної групи.
  * «added» — звичний порядок: невиконані в порядку додавання, виконані свіжі зверху.
  * За ціною діапазон рахується за верхньою межею, хотілки без ціни — в кінці.
+ * `top` — верхня межа ціни для порівняння: хотілки в різних валютах порівнюються в основній.
  */
 export function sortWishes<T extends Pick<Wish, "done" | "added" | "title" | "price"> & { priceMax?: number | null }>(
   wishes: T[],
   sort: WishSort,
   collator: Intl.Collator = new Intl.Collator(),
+  top: (w: T) => number | null = (w) => w.priceMax ?? w.price,
 ): T[] {
   if (sort === "added") return wishes;
-  const top = (w: T): number | null => w.priceMax ?? w.price;
   const byPrice = (dir: 1 | -1) => (a: T, b: T): number => {
     const pa = top(a);
     const pb = top(b);
