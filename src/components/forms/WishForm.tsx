@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { LIMITS } from "../../../shared/constants";
 import { genId, numInput, todayISO } from "../../../shared/format";
-import { normalizeUrl, parseMoney } from "../../../shared/parse";
+import { normalizeUrl, parsePriceRange } from "../../../shared/parse";
 import type { Wish } from "../../../shared/types";
 import { closeDialog, dispatch, toast, useStore, useT } from "../../lib/store";
 import { CloseIcon, PlusIcon } from "../icons";
@@ -15,7 +15,9 @@ export function WishForm({ wish }: { wish?: Wish }) {
   const cars = useStore((s) => s.data.cars);
   const [car, setCar] = useState(wish?.car ?? active ?? cars[0]?.id ?? "");
   const [title, setTitle] = useState(wish?.title ?? "");
-  const [price, setPrice] = useState(wish?.price != null ? numInput(wish.price) : "");
+  const [price, setPrice] = useState(
+    wish?.price == null ? "" : wish.priceMax != null ? `${numInput(wish.price)}-${numInput(wish.priceMax)}` : numInput(wish.price),
+  );
   const [links, setLinks] = useState<string[]>(wish?.links.length ? wish.links : [""]);
   const [note, setNote] = useState(wish?.note ?? "");
   const [error, setError] = useState("");
@@ -23,8 +25,8 @@ export function WishForm({ wish }: { wish?: Wish }) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return setError(t.wishForm.errTitle);
-    const parsedPrice = parseMoney(price);
-    if (parsedPrice === "invalid" || (parsedPrice != null && parsedPrice > LIMITS.maxSum)) {
+    const parsedPrice = parsePriceRange(price);
+    if (parsedPrice === "invalid" || (parsedPrice.priceMax ?? parsedPrice.price ?? 0) > LIMITS.maxSum) {
       return setError(t.wishForm.errPrice);
     }
     const urls: string[] = [];
@@ -41,7 +43,8 @@ export function WishForm({ wish }: { wish?: Wish }) {
         id: wish?.id ?? genId(),
         car,
         title: title.trim(),
-        price: parsedPrice,
+        price: parsedPrice.price,
+        priceMax: parsedPrice.priceMax,
         links: urls,
         note: note.trim(),
         added: wish?.added ?? todayISO(),
@@ -74,8 +77,8 @@ export function WishForm({ wish }: { wish?: Wish }) {
             maxLength={LIMITS.titleLength}
           />
         </Field>
-        <Field label={t.wishForm.price} hint={t.common.optional}>
-          <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
+        <Field label={t.wishForm.price} hint={t.wishForm.priceHint}>
+          <input value={price} onChange={(e) => setPrice(e.target.value)} />
         </Field>
         <div className="field">
           <span className="field-label">{t.wishForm.links}</span>

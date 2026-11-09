@@ -24,6 +24,10 @@ const ok = (n: number | null | undefined): n is number => n != null && Number.is
 export const fmtMoney0 = (n: number | null | undefined): string =>
   ok(n) ? `${numberFormat(0, 0).format(n)}${NBSP}₴` : "—";
 
+/** «14 000 ₴» або діапазон «4 000–6 000 ₴». */
+export const fmtMoneyRange = (min: number, max: number | null | undefined): string =>
+  ok(max) && max > min ? `${numberFormat(0, 0).format(min)}–${fmtMoney0(max)}` : fmtMoney0(min);
+
 export const fmtMoney = (n: number | null | undefined): string =>
   ok(n) ? `${numberFormat(2, 2).format(n)}${NBSP}₴` : "—";
 

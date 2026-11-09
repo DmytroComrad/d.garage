@@ -56,6 +56,26 @@ export function parseDecimal(raw: string, opts: { money?: boolean } = {}): Parse
 
 export const parseMoney = (raw: string): Parsed => parseDecimal(raw, { money: true });
 
+/** Ціна хотілки: одне число або діапазон. Межі однакові — це одна ціна. */
+export type PriceRange = { price: number | null; priceMax: number | null };
+
+/**
+ * «14000», «4000-6000», «4 000 – 6 000 ₴», «1.500…2.000». Межі можна написати в будь-якому порядку.
+ * Мінуса тут не буває, тож дефіс завжди розділяє межі.
+ */
+export function parsePriceRange(raw: string): PriceRange | "invalid" {
+  const parts = raw.split(/-|–|—|\.\.\.?|…/);
+  if (parts.length > 2) return "invalid";
+  if (parts.length === 1) {
+    const price = parseMoney(raw);
+    return price === "invalid" ? "invalid" : { price, priceMax: null };
+  }
+  const [a, b] = parts.map(parseMoney);
+  if (typeof a !== "number" || typeof b !== "number") return "invalid";
+  const [low, high] = a <= b ? [a, b] : [b, a];
+  return { price: low, priceMax: high > low ? high : null };
+}
+
 /** Справжня календарна дата YYYY-MM-DD: 2026-02-31 і 2026-13-45 не проходять. */
 export const isIsoDate = (value: unknown): value is string => {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

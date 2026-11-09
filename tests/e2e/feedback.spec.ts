@@ -231,9 +231,54 @@ test("длинные ссылки в хотелках не ломают вёрс
   await page.getByRole("button", { name: "Добавить хотелку" }).click();
   const form = page.getByRole("dialog");
   await form.getByLabel("Что хочешь сделать или купить").fill("Очень длинное название хотелки без пробелов".repeat(3));
-  await form.getByLabel("Примерная цена, ₴").fill("123456789");
+  await form.getByLabel("Примерная цена, ₴").fill("123456789-987654321");
   await form.getByLabel("Ссылки на товары или запчасти 1").fill(`https://very-long-shop-domain-name-${"x".repeat(60)}.com.ua/item`);
   await form.getByRole("button", { name: "Сохранить" }).click();
   await expect(page.locator(".wish")).toHaveCount(1);
   await expectNoHorizontalScroll(page);
+});
+
+test("хотелка с ценой «от-до»: диапазон в списке и в итогах, правка показывает его же", async ({ page }) => {
+  await register(page);
+  await addCar(page, "Тест");
+  await openTab(page, "Хотелки");
+
+  await page.getByRole("button", { name: "Добавить хотелку" }).click();
+  let form = page.getByRole("dialog");
+  await form.getByLabel("Что хочешь сделать или купить").fill("Зимняя резина");
+  await form.getByLabel("Примерная цена, ₴").fill("4000-6000");
+  await form.getByRole("button", { name: "Сохранить" }).click();
+
+  await page.getByRole("button", { name: "Добавить хотелку" }).click();
+  form = page.getByRole("dialog");
+  await form.getByLabel("Что хочешь сделать или купить").fill("Коврики");
+  await form.getByLabel("Примерная цена, ₴").fill("1000");
+  await form.getByRole("button", { name: "Сохранить" }).click();
+
+  const wishes = page.locator(".wish");
+  await expect(wishes.nth(0)).toContainText(nb("≈ 4 000–6 000 ₴"));
+  await expect(wishes.nth(1)).toContainText(nb("≈ 1 000 ₴"));
+  await expect(page.locator(".wish-totals")).toContainText(nb("≈ 5 000–7 000 ₴"));
+
+  // Ошибка понятная, а не «только цифры».
+  await wishes.nth(0).locator(".wish-main").click();
+  form = page.getByRole("dialog");
+  await expect(form.getByLabel("Примерная цена, ₴")).toHaveValue("4000-6000");
+  await form.getByLabel("Примерная цена, ₴").fill("4000-");
+  await form.getByRole("button", { name: "Сохранить" }).click();
+  await expect(form.getByText("Цена — число или диапазон, например 4000-6000.")).toBeVisible();
+  await form.getByLabel("Примерная цена, ₴").fill("4500 – 5500");
+  await form.getByRole("button", { name: "Сохранить" }).click();
+  await expect(wishes.nth(0)).toContainText(nb("≈ 4 500–5 500 ₴"));
+
+  // Выполнена: сумму с диапазоном впишут сами, описание подставлено.
+  await wishes.nth(0).getByRole("checkbox").click();
+  await page.getByRole("button", { name: "Создать запись" }).click();
+  const service = page.getByRole("dialog", { name: "Ремонт, покупка, сервис" });
+  await expect(service.getByLabel("Что сделано / куплено")).toHaveValue("Зимняя резина");
+  await expect(service.getByLabel("Сумма ₴")).toHaveValue("");
+
+  await page.reload();
+  await openTab(page, "Хотелки");
+  await expect(page.locator(".wish-totals")).toContainText(nb("≈ 1 000 ₴"));
 });

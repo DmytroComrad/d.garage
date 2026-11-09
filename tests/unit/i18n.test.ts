@@ -22,6 +22,7 @@ const wish = (over: Partial<Wish> = {}): Wish => ({
   car: CAR,
   title: "Зимова гума",
   price: 14000,
+  priceMax: null,
   links: ["https://example.com/tires"],
   note: "",
   added: "2026-09-01",
@@ -224,6 +225,17 @@ describe("таблиця іншими мовами", () => {
     expect(fromRu?.wishes).toEqual([
       expect.objectContaining({ title: "Зимова гума", price: 14000, links: ["https://a.ua/1", "https://b.ua/2"], done: true }),
     ]);
+  });
+
+  it("діапазон ціни хотілки окремим стовпцем «Ціна до» і назад", () => {
+    const ranged = { ...data, wishes: [wish({ price: 4000, priceMax: 6000 }), wish({ id: "w2", title: "Килимки", price: 900 })] };
+    for (const lang of ["en", "uk", "ru"] as const) {
+      const tabs = Object.fromEntries(buildSheets(ranged, "2026-09-15", lang).map((s) => [s.title, sheetValues(s)]));
+      expect(sheetsToBackup(tabs)?.wishes).toEqual([
+        expect.objectContaining({ title: "Зимова гума", price: 4000, priceMax: 6000 }),
+        expect.objectContaining({ title: "Килимки", price: 900, priceMax: null }),
+      ]);
+    }
   });
 
   it("назви листів беруться тією мовою, якою названо більшість", () => {

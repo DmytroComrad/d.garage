@@ -101,7 +101,8 @@ function WishDoneDialog({ wish }: { wish: Wish }) {
             closeDialog({
               type: "service",
               car: wish.car,
-              draft: { what: wish.title, sum: wish.price, note: wish.note },
+              // Для діапазону точної суми ще немає: її впишуть самі.
+              draft: { what: wish.title, sum: wish.priceMax == null ? wish.price : null, note: wish.note },
               wishId: wish.id,
             })
           }

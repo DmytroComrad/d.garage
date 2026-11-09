@@ -1,5 +1,5 @@
-import { sumMoney } from "../../shared/calc";
-import { fmtDate, fmtMoney0 } from "../../shared/format";
+import { wishesTotal } from "../../shared/calc";
+import { fmtDate, fmtMoneyRange } from "../../shared/format";
 import type { ServiceRecord, Wish } from "../../shared/types";
 import { openDialog, setWishDone, useCarView, useT } from "../lib/store";
 import { CheckIcon, LinkIcon } from "./icons";
@@ -48,7 +48,7 @@ function WishRow({ wish, record }: { wish: Wish; record: ServiceRecord | undefin
         )}
       </div>
       <div className="wish-side">
-        {wish.price != null && <span className="wish-price num">≈ {fmtMoney0(wish.price)}</span>}
+        {wish.price != null && <span className="wish-price num">≈ {fmtMoneyRange(wish.price, wish.priceMax)}</span>}
         {record && (
           <button
             type="button"
@@ -69,7 +69,7 @@ export function WishesTab({ carId }: { carId: string }) {
   const { wishes, wishRecords } = useCarView(carId);
   const open = wishes.filter((w) => !w.done);
   const done = wishes.length - open.length;
-  const planned = sumMoney(open.map((w) => w.price ?? 0));
+  const planned = wishesTotal(open);
 
   return (
     <div className="narrow">
@@ -86,7 +86,7 @@ export function WishesTab({ carId }: { carId: string }) {
         <>
           <p className="wish-totals">
             <span>{t.wishes.planned(open.length)}</span>
-            {planned > 0 && <span className="num">≈ {fmtMoney0(planned)}</span>}
+            {planned.max > 0 && <span className="num">≈ {fmtMoneyRange(planned.min, planned.max)}</span>}
             {done > 0 && <span>{t.wishes.doneCount(done)}</span>}
           </p>
           <div className="sheet ledger">
