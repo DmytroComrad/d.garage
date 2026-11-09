@@ -6,6 +6,8 @@ import { buildSheets } from "../../shared/sheet";
 import type { SheetExportResponse, SheetImportResponse } from "../../shared/types";
 import { HttpError, errorText, postJson } from "../lib/api";
 import { downloadFile } from "../lib/download";
+import { downloadPhotoArchive } from "../lib/photoZip";
+import { canShowPhoto } from "../lib/photos";
 import {
   applyBackup,
   dispatch,
@@ -76,6 +78,51 @@ function BackupCard() {
           {t.data.copyAll}
         </button>
       </div>
+    </section>
+  );
+}
+
+/** Власна копія фото: тепер вони лежать у нашому сховищі, а не на Диску людини. */
+function PhotosCard() {
+  const t = useT();
+  const photos = useStore((s) => s.data.photos);
+  const connected = useStore((s) => s.drive.connected);
+  const activeCar = useStore((s) => s.data.cars.find((c) => c.id === s.active));
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const shown = photos.filter((p) => canShowPhoto(p, connected));
+  const carCount = activeCar ? shown.filter((p) => p.car === activeCar.id).length : 0;
+
+  const run = async (carId?: string) => {
+    setProgress({ done: 0, total: 0 });
+    try {
+      const { saved, failed } = await downloadPhotoArchive(carId, (done, total) => setProgress({ done, total }));
+      if (failed) toast(t.data.photosFailed(failed));
+      else if (saved) toast(t.data.photosSaved(saved));
+    } catch (err) {
+      toast(errorText(err));
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  return (
+    <section className="sheet data-sheet">
+      <h2 className="sheet-title">{t.data.photosTitle}</h2>
+      <p className="muted">{t.data.photosText}</p>
+      {shown.length === 0 ? (
+        <p className="muted">{t.data.photosNone}</p>
+      ) : (
+        <div className="btn-row">
+          <button type="button" className="btn btn-ink" disabled={progress !== null} onClick={() => void run()}>
+            {progress ? t.data.photosPacking(progress.done, progress.total) : t.data.photosAll}
+          </button>
+          {activeCar && carCount > 0 && carCount < shown.length && (
+            <button type="button" className="btn btn-quiet" disabled={progress !== null} onClick={() => void run(activeCar.id)}>
+              {t.data.onlyCar(activeCar.name)}
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -458,6 +505,7 @@ export function DataTab() {
         <p className="muted">{t.data.whereText}</p>
       </section>
       <BackupCard />
+      <PhotosCard />
       <RestoreCard />
       <SheetCard />
       <DriveCard />

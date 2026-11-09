@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
+import { unzipSync } from "fflate";
 import { addCar, addFuel, expectNoHorizontalScroll, loadDemo, nb, openTab, register, today } from "./helpers";
 
 test.describe("критерии приёмки", () => {
@@ -460,6 +461,29 @@ test("смуга вкладок на телефоні гортається ли�
   const before = await page.evaluate(() => window.scrollY);
   expect((await swipe(0, -40)).top).toBe(0);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
+});
+
+test("все фото можно скачать одним архивом, разложенными по папкам", async ({ page }) => {
+  await register(page);
+  await addCar(page, "Тест");
+  await openTab(page, "Данные");
+  await expect(page.getByText("Фото пока нет.")).toBeVisible();
+
+  await openTab(page, "Галерея");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  await page.locator('input[type="file"]').setInputFiles({ name: "машина.png", mimeType: "image/png", buffer: png });
+  await expect(page.locator(".photo-tile")).toHaveCount(1);
+
+  await openTab(page, "Данные");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Скачать все фото" }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe(`d-garage-photos-${today()}.zip`);
+  const zip = unzipSync(new Uint8Array(await readFile(await file.path())));
+  const names = Object.keys(zip);
+  expect(names).toEqual([`Тест/Галерея/${today()} машина.jpg`]);
+  expect([...zip[names[0]].slice(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
+  await expect(page.getByText("Фото в архиве: 1")).toBeVisible();
 });
 
 test("после ошибки регистрации проверка на робота выдаётся заново", async ({ page }) => {
