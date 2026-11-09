@@ -383,11 +383,36 @@ test("штраф записывается отдельной категорие�
   await expect(page.locator(".tab-panel")).toContainText("Штрафы");
 });
 
-test("Галерея без настроенного Google говорит об этом, а не падает", async ({ page }) => {
+test("галерея работает без Google: фото сжимается с миниатюрой, открывается и удаляется", async ({ page }) => {
   await register(page);
   await addCar(page, "Тест");
   await openTab(page, "Галерея");
-  await expect(page.getByRole("heading", { name: "Галерея пока недоступна" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Фото пока нет" })).toBeVisible();
+
+  // Настоящая картинка 1×1: браузер должен её прочитать, пересжать в JPEG и сделать миниатюру.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  const upload = page.waitForResponse((r) => r.url().endsWith("/api/photos") && r.request().method() === "POST");
+  await page.locator('input[type="file"]').setInputFiles({ name: "машина.png", mimeType: "image/png", buffer: png });
+  const res = await upload;
+  expect(res.status()).toBe(200);
+  const { photo } = await res.json();
+  expect(photo).toMatchObject({ mime: "image/jpeg", name: "машина.jpg", storage: "r2", width: 1, height: 1 });
+  const thumb = await page.request.get(`/api/photos/${photo.id}/thumb`);
+  expect(thumb.headers()["content-type"]).toBe("image/jpeg");
+
+  const tile = page.locator(".photo-tile img");
+  await expect(tile).toHaveCount(1);
+  await expect.poll(() => tile.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+
+  await page.locator(".photo-tile").click();
+  await expect.poll(() => page.locator(".lightbox-stage img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
+  await page.getByRole("button", { name: "Удалить", exact: true }).click();
+  await page.getByRole("button", { name: "Да, удалить" }).click();
+  await expect(page.getByRole("heading", { name: "Фото пока нет" })).toBeVisible();
+
+  await page.reload();
+  await openTab(page, "Галерея");
+  await expect(page.getByRole("heading", { name: "Фото пока нет" })).toBeVisible();
 });
 
 test("ни одна вкладка не скроллится по горизонтали", async ({ page }) => {

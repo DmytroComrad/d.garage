@@ -29,7 +29,11 @@ export type ReminderLevel = Reminder["notified"];
 
 export type PhotoKind = "gallery" | "record";
 
-/** У базі лише текстові метадані: сам файл лежить на Google Диску користувача. */
+/**
+ * У базі лише текстові метадані, сам файл — у сховищі R2.
+ * Старі фото ще можуть лежати лише на Google Диску користувача (storage: "drive"), поки їх не перенесено;
+ * "missing" — на Диску їх видалили раніше, ніж ми встигли перенести.
+ */
 export type Photo = {
   id: string;
   car: string;
@@ -41,7 +45,9 @@ export type Photo = {
   width: number | null;
   height: number | null;
   createdAt: number;
+  /** Копія на Google Диску для фото, завантажених до переходу на R2; інакше порожньо. */
   driveId: string;
+  storage: "r2" | "drive" | "missing";
 };
 
 export type GarageData = {

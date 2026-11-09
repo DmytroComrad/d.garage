@@ -19,8 +19,10 @@ export type EmailBinding = {
   }): Promise<unknown>;
 };
 
-export type Bindings = Omit<Env, keyof Secrets> &
+export type Bindings = Omit<Env, keyof Secrets | "IMAGES"> &
   Secrets & {
+    /** Cloudflare Images лише для HEIC; у тестах і локально його може не бути. */
+    IMAGES?: ImagesBinding;
     EMAIL?: EmailBinding;
     EMAIL_FROM?: string;
   };

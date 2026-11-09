@@ -8,6 +8,7 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "garage-e2e", "database_id": "00000000-0000-0000-0000-00000000e2e0", "migrations_dir": "migrations" }
   ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "garage-media-e2e" }],
   "ratelimits": [
     { "name": "RL_AUTH", "namespace_id": "9101", "simple": { "limit": 100000, "period": 60 } },
     { "name": "RL_API", "namespace_id": "9102", "simple": { "limit": 100000, "period": 60 } }
