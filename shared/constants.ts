@@ -13,6 +13,7 @@ export const CATEGORIES = [
   { id: "Мойка / уход", key: "care" },
   { id: "Документы / страховка", key: "documents" },
   { id: "Тюнинг", key: "tuning" },
+  { id: "Штрафы", key: "fines" },
   { id: "Другое", key: "other" },
 ] as const;
 
