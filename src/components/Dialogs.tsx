@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { LIMITS } from "../../shared/constants";
+import { CURRENCIES, CURRENCY_SYMBOLS, type Currency } from "../../shared/currency";
 import { formatDate, todayISO } from "../../shared/format";
-import { DATE_FORMATS, UNITS } from "../../shared/prefs";
+import { DATE_FORMATS, UNITS, currencyPrefs } from "../../shared/prefs";
 import { reminderText, type RemindersRow } from "../../shared/reminders";
 import type { Photo, Wish } from "../../shared/types";
 import { del, errorText, postJson } from "../lib/api";
@@ -13,7 +14,9 @@ import {
   markReminderDone,
   removePhoto,
   resetToAnon,
+  setMainCurrency,
   setPrefs,
+  setSecondCurrency,
   setTab,
   setTheme,
   setUser,
@@ -107,7 +110,12 @@ function WishDoneDialog({ wish }: { wish: Wish }) {
               type: "service",
               car: wish.car,
               // Для діапазону точної суми ще немає: її впишуть самі.
-              draft: { what: wish.title, sum: wish.priceMax == null ? wish.price : null, note: wish.note },
+              draft: {
+                what: wish.title,
+                sum: wish.priceMax == null ? wish.price : null,
+                note: wish.note,
+                currency: wish.currency,
+              },
               wishId: wish.id,
             })
           }
@@ -135,6 +143,59 @@ function CopyDialog({ text }: { text: string }) {
         </button>
       </div>
     </Modal>
+  );
+}
+
+/** Основна валюта всіх підсумків і додаткова біля головних сум. Налаштування цього пристрою, як і одиниці. */
+function CurrencyFields() {
+  const t = useT();
+  const prefs = useStore((s) => s.prefs);
+  const { main, second } = currencyPrefs(prefs);
+  const label = (c: Currency) => `${CURRENCY_SYMBOLS[c]} ${c}`;
+  return (
+    <>
+      <div className="field">
+        <span className="field-label">{t.currency.main}</span>
+        <div className="segmented" role="group" aria-label={t.currency.main}>
+          {CURRENCIES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={main === c ? "is-on" : ""}
+              aria-pressed={main === c}
+              onClick={() => setMainCurrency(c)}
+            >
+              {label(c)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <span className="field-label">{t.currency.second}</span>
+        <div className="segmented" role="group" aria-label={t.currency.second}>
+          <button
+            type="button"
+            className={second === null ? "is-on" : ""}
+            aria-pressed={second === null}
+            onClick={() => setSecondCurrency(null)}
+          >
+            {t.currency.none}
+          </button>
+          {CURRENCIES.filter((c) => c !== main).map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={second === c ? "is-on" : ""}
+              aria-pressed={second === c}
+              onClick={() => setSecondCurrency(c)}
+            >
+              {label(c)}
+            </button>
+          ))}
+        </div>
+        <span className="field-hint">{t.currency.hint}</span>
+      </div>
+    </>
   );
 }
 
@@ -250,6 +311,8 @@ function AccountDialog() {
           </label>
           <span className="field-hint">{t.account.unitsHint}</span>
         </div>
+
+        <CurrencyFields />
 
         <div className="field">
           <span className="field-label">{t.account.dateFormat}</span>

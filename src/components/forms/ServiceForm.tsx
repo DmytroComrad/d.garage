@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { sumMoney } from "../../../shared/calc";
 import { CATEGORIES, DEFAULT_CATEGORY, ITEM_KINDS, LIMITS, WISH_CATEGORY, categoryLabel, itemKindLabel } from "../../../shared/constants";
+import { CURRENCY_SYMBOLS, type Currency } from "../../../shared/currency";
 import { fmtDist, fmtMoney, fmtNum, genId, numInput, todayISO, unitLabel } from "../../../shared/format";
 import { parseMoney, parseOdo } from "../../../shared/parse";
 import { fromKm, toKm } from "../../../shared/prefs";
@@ -12,6 +13,7 @@ import {
   CarSelect,
   Field,
   FormFooter,
+  MoneyInput,
   Suggest,
   carOdo,
   finishSave,
@@ -19,6 +21,7 @@ import {
   reminderOps,
   useLinkedReminder,
   usePrevOdo,
+  useMainCurrency,
   useReminderDraft,
 } from "./common";
 import { PhotoField } from "./PhotoField";
@@ -59,6 +62,10 @@ export function ServiceForm({
   const [what, setWhat] = useState(record?.what ?? draft?.what ?? "");
   const [where, setWhere] = useState(record?.where ?? "");
   const [sum, setSum] = useState(record ? numInput(record.sum) : draft?.sum != null ? numInput(draft.sum) : "");
+  const main = useMainCurrency();
+  // Суми позицій — у валюті запису.
+  const [currency, setCurrency] = useState<Currency>(record?.currency ?? draft?.currency ?? main);
+  const symbol = CURRENCY_SYMBOLS[currency];
   const [note, setNote] = useState(record?.note ?? draft?.note ?? "");
   const [items, setItems] = useState<ItemDraft[]>(
     (record?.items ?? []).map((it) => ({ ...it, sum: numInput(it.sum) })),
@@ -123,6 +130,7 @@ export function ServiceForm({
       what: what.trim(),
       where: where.trim(),
       sum: total,
+      currency,
       note: note.trim(),
       items: items.map((it) => ({ id: it.id, kind: it.kind, name: it.name.trim(), sum: itemSum(it.sum) ?? 0 })),
     };
@@ -194,15 +202,17 @@ export function ServiceForm({
 
         <div className="field">
           <label className="field-label" htmlFor={sumId}>
-            {t.serviceForm.sum}
+            {t.serviceForm.sum(symbol)}
           </label>
-          {items.length ? (
-            <output id={sumId} className="sum-total">
-              {fmtMoney(itemsTotal)}
-            </output>
-          ) : (
-            <input id={sumId} inputMode="decimal" value={sum} onChange={(e) => setSum(e.target.value)} />
-          )}
+          <MoneyInput currency={currency} onCurrency={setCurrency}>
+            {items.length ? (
+              <output id={sumId} className="sum-total">
+                {fmtMoney(itemsTotal, currency)}
+              </output>
+            ) : (
+              <input id={sumId} inputMode="decimal" value={sum} onChange={(e) => setSum(e.target.value)} />
+            )}
+          </MoneyInput>
         </div>
 
         <div className="items">
@@ -232,9 +242,9 @@ export function ServiceForm({
                   />
                   <input
                     className="item-sum"
-                    aria-label={t.serviceForm.sumAria}
+                    aria-label={t.serviceForm.sumAria(symbol)}
                     inputMode="decimal"
-                    placeholder="₴"
+                    placeholder={symbol}
                     value={it.sum}
                     onChange={(e) => patchItem(it.id, { sum: e.target.value })}
                   />
@@ -263,7 +273,7 @@ export function ServiceForm({
           )}
           {leftover > 0 && (
             <p className="field-hint">
-              {t.serviceForm.leftover(fmtMoney(typed as number), fmtMoney(leftover))}{" "}
+              {t.serviceForm.leftover(fmtMoney(typed as number, currency), fmtMoney(leftover, currency))}{" "}
               <button type="button" className="link-btn" onClick={() => addItem("extra", numInput(leftover))}>
                 {t.serviceForm.addOther}
               </button>

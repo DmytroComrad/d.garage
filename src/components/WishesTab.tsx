@@ -1,4 +1,5 @@
 import { wishesTotal } from "../../shared/calc";
+import { CURRENCIES } from "../../shared/currency";
 import { fmtDate, fmtMoneyRange, hostOf } from "../../shared/format";
 import { LOCALES } from "../../shared/i18n";
 import { sortWishes } from "../../shared/listview";
@@ -42,7 +43,9 @@ function WishRow({ wish, record }: { wish: Wish; record: ServiceRecord | undefin
         )}
       </div>
       <div className="wish-side">
-        {wish.price != null && <span className="wish-price num">≈ {fmtMoneyRange(wish.price, wish.priceMax)}</span>}
+        {wish.price != null && (
+          <span className="wish-price num">≈ {fmtMoneyRange(wish.price, wish.priceMax, wish.currency)}</span>
+        )}
         {record && (
           <button
             type="button"
@@ -60,13 +63,29 @@ function WishRow({ wish, record }: { wish: Wish; record: ServiceRecord | undefin
 
 export function WishesTab({ carId }: { carId: string }) {
   const t = useT();
-  const { wishes, wishRecords } = useCarView(carId);
+  const { wishes, wishRecords, money } = useCarView(carId);
   const lang = useStore((s) => s.prefs.lang);
   const [sort, setSort] = useWishSort();
-  const shown = sortWishes(wishes, sort, new Intl.Collator(LOCALES[lang]));
+  // За ціною хотілки в різних валютах порівнюються в основній.
+  const top = (w: Wish): number | null => {
+    const inMain = money.wish(w);
+    return inMain ? (inMain.priceMax ?? inMain.price) : null;
+  };
+  const shown = sortWishes(wishes, sort, new Intl.Collator(LOCALES[lang]), top);
   const open = wishes.filter((w) => !w.done);
   const done = wishes.length - open.length;
-  const planned = wishesTotal(open);
+  // У планах — в основній валюті за курсом на день, коли хотілку додали. Без курсу — окремо, як є.
+  const converted = open.map((w) => money.wish(w));
+  const planned = wishesTotal(converted.filter((w): w is Wish => w !== null));
+  const plannedText = [
+    planned.max > 0 ? fmtMoneyRange(planned.min, planned.max) : "",
+    ...CURRENCIES.map((c) => {
+      const range = wishesTotal(open.filter((w, i) => converted[i] === null && w.currency === c));
+      return range.max > 0 ? fmtMoneyRange(range.min, range.max, c) : "";
+    }),
+  ]
+    .filter(Boolean)
+    .join(" + ");
 
   return (
     <div className="narrow">
@@ -84,7 +103,7 @@ export function WishesTab({ carId }: { carId: string }) {
           <div className="wish-head">
             <p className="wish-totals">
               <span>{t.wishes.planned(open.length)}</span>
-              {planned.max > 0 && <span className="num">≈ {fmtMoneyRange(planned.min, planned.max)}</span>}
+              {plannedText && <span className="num">≈ {plannedText}</span>}
               {done > 0 && <span>{t.wishes.doneCount(done)}</span>}
             </p>
             {wishes.length > 1 && <WishSortSelect value={sort} onChange={setSort} />}

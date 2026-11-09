@@ -25,6 +25,8 @@ export type Bindings = Omit<Env, keyof Secrets | "IMAGES"> &
     IMAGES?: ImagesBinding;
     EMAIL?: EmailBinding;
     EMAIL_FROM?: string;
+    /** Лише для e2e й тестів: сталі курси валют замість НБУ, JSON на кшталт {"USD":41.5,"EUR":48.25}. */
+    FX_TEST_RATES?: string;
   };
 
 export type SessionUser = {

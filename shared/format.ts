@@ -1,5 +1,6 @@
+import { CURRENCIES, CURRENCY_SYMBOLS, type Currency, type Rest, type Total } from "./currency";
 import { LOCALES, messages } from "./i18n";
-import { fromKm, otherUnit, prefs, unitFactor, type DateFormat, type Lang } from "./prefs";
+import { fromKm, mainCurrency, otherUnit, prefs, unitFactor, type DateFormat, type Lang } from "./prefs";
 
 /*
  * Форматування для інтерфейсу: мова, одиниці й формат дати беруться з поточних налаштувань.
@@ -21,15 +22,39 @@ const numberFormat = (min: number, max: number, lang: Lang = prefs().lang): Intl
 
 const ok = (n: number | null | undefined): n is number => n != null && Number.isFinite(n);
 
-export const fmtMoney0 = (n: number | null | undefined): string =>
-  ok(n) ? `${numberFormat(0, 0).format(n)}${NBSP}₴` : "—";
+/*
+ * Гроші: число, нерозривний пробіл і знак валюти — «1 234,56 ₴», «1,234.56 $».
+ * Без валюти — основна з налаштувань: у ній рахуються всі підсумки. Запис показується у своїй валюті.
+ */
+export const fmtMoney0 = (n: number | null | undefined, currency: Currency = mainCurrency()): string =>
+  ok(n) ? `${numberFormat(0, 0).format(n)}${NBSP}${CURRENCY_SYMBOLS[currency]}` : "—";
 
 /** «14 000 ₴» або діапазон «4 000–6 000 ₴». */
-export const fmtMoneyRange = (min: number, max: number | null | undefined): string =>
-  ok(max) && max > min ? `${numberFormat(0, 0).format(min)}–${fmtMoney0(max)}` : fmtMoney0(min);
+export const fmtMoneyRange = (min: number, max: number | null | undefined, currency: Currency = mainCurrency()): string =>
+  ok(max) && max > min ? `${numberFormat(0, 0).format(min)}–${fmtMoney0(max, currency)}` : fmtMoney0(min, currency);
 
-export const fmtMoney = (n: number | null | undefined): string =>
-  ok(n) ? `${numberFormat(2, 2).format(n)}${NBSP}₴` : "—";
+export const fmtMoney = (n: number | null | undefined, currency: Currency = mainCurrency()): string =>
+  ok(n) ? `${numberFormat(2, 2).format(n)}${NBSP}${CURRENCY_SYMBOLS[currency]}` : "—";
+
+/** Те, що не вдалося перерахувати без курсу: «+ 50 €». Порожньо, якщо перераховано все. */
+export const fmtRest = (rest: Rest, fmt: (n: number, c: Currency) => string = fmtMoney0): string =>
+  CURRENCIES.filter((c) => rest[c])
+    .map((c) => ` + ${fmt(rest[c] as number, c)}`)
+    .join("");
+
+/**
+ * Підсумок в основній валюті. Суми, для яких немає жодного курсу (НБУ недоступний), не губляться
+ * й не рахуються навмання: вони йдуть поруч як є — «1 234 $ + 50 €».
+ */
+export const fmtTotal = (
+  total: Total,
+  fmt: (n: number, c: Currency) => string = fmtMoney0,
+  currency: Currency = mainCurrency(),
+): string => {
+  const rest = fmtRest(total.rest, fmt);
+  if (rest && total.sum === 0) return rest.slice(3);
+  return `${fmt(total.sum, currency)}${rest}`;
+};
 
 export const fmtNum = (n: number): string => numberFormat(0, 0).format(n);
 

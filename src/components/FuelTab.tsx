@@ -1,6 +1,6 @@
 import { memo, useId, useMemo } from "react";
-import { fuelChipTone, sumMoney, type FuelCalc } from "../../shared/calc";
-import { fmtConsumption, fmtDate, fmtDist, fmtLiters, fmtLiters1, fmtMoney, fmtMoney0, fmtNum, fmtPerDist } from "../../shared/format";
+import { fuelChipTone, type FuelCalc } from "../../shared/calc";
+import { fmtConsumption, fmtDate, fmtDist, fmtLiters, fmtLiters1, fmtMoney, fmtNum, fmtPerDist, fmtTotal } from "../../shared/format";
 import { EMPTY_INPUTS, filterFromInputs, filterRecords, recordMonths, sortRecords, sortsByDate } from "../../shared/listview";
 import type { FuelRecord, Photo } from "../../shared/types";
 import { deleteRecords, openDialog, toast, useCarView, useStore, useT } from "../lib/store";
@@ -39,7 +39,8 @@ const FuelRow = memo(function FuelRow({
     fmtDist(record.odo),
     fmtLiters(record.liters),
     record.grade ? t.fuelGrades[record.grade] : "",
-    calc ? t.units.perLiter(fmtMoney(calc.price)) : "",
+    // Ціна літра — у валюті самої заправки.
+    calc ? t.units.perLiter(fmtMoney(calc.price, record.currency)) : "",
     calc?.sinceLast != null ? `+${fmtDist(calc.sinceLast)}` : "",
     record.note,
   ];
@@ -50,7 +51,7 @@ const FuelRow = memo(function FuelRow({
       kind="fuel"
       title={record.station || t.fuel.defaultTitle}
       meta={meta.filter(Boolean).join(" · ")}
-      sum={fmtMoney(record.sum)}
+      sum={fmtMoney(record.sum, record.currency)}
       badge={
         !record.full ? (
           <span className="tag">{t.fuel.notFull}</span>
@@ -68,17 +69,17 @@ const FuelRow = memo(function FuelRow({
 export function FuelTab({ carId }: { carId: string }) {
   const t = useT();
   const unit = useStore((s) => s.prefs.unit);
-  const { fuel, calcs, fuelTotals: f, photosByRecord } = useCarView(carId);
+  const { fuel, calcs, fuelTotals: f, totals: carTotals, money, photosByRecord } = useCarView(carId);
   const [view, setView] = useListView("fuel");
   const panelId = useId();
   const months = useMemo(() => recordMonths(fuel), [fuel]);
   const shown = useMemo(
-    () => sortRecords(filterRecords(fuel, filterFromInputs(view.inputs, unit)), view.sort),
-    [fuel, view.inputs, view.sort, unit],
+    () => sortRecords(filterRecords(fuel, filterFromInputs(view.inputs, unit)), view.sort, money.sumOf),
+    [fuel, view.inputs, view.sort, unit, money],
   );
   const selection = useSelection(shown.map((r) => r.id));
   const totals = (records: FuelRecord[]) =>
-    `${fmtLiters1(records.reduce((acc, r) => acc + r.liters, 0))} · ${fmtMoney0(sumMoney(records.map((r) => r.sum)))}`;
+    `${fmtLiters1(records.reduce((acc, r) => acc + r.liters, 0))} · ${fmtTotal(money.total(records))}`;
   const row = (r: FuelRecord) => (
     <FuelRow
       key={r.id}
@@ -100,7 +101,7 @@ export function FuelTab({ carId }: { carId: string }) {
             <hr />
             <KeyValue label={t.fuel.count} value={fmtNum(f.count)} />
             <KeyValue label={t.fuel.poured} value={fmtLiters(f.liters)} />
-            <KeyValue label={t.fuel.spent} value={fmtMoney(f.spent)} />
+            <KeyValue label={t.fuel.spent} value={fmtTotal(carTotals.fuel, fmtMoney)} />
             <KeyValue label={t.fuel.avgPrice} value={fmtMoney(f.avgPrice)} />
             <KeyValue label={t.fuel.perDist[unit]} value={fmtPerDist(f.perKm)} />
           </dl>

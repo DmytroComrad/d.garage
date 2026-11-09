@@ -13,5 +13,6 @@
     { "name": "RL_AUTH", "namespace_id": "9101", "simple": { "limit": 100000, "period": 60 } },
     { "name": "RL_API", "namespace_id": "9102", "simple": { "limit": 100000, "period": 60 } }
   ],
-  "vars": { "APP_URL": "http://localhost:5199" }
+  // FX_TEST_RATES — сталі курси замість НБУ: тести не ходять в інтернет. Діє лише на localhost.
+  "vars": { "APP_URL": "http://localhost:5199", "FX_TEST_RATES": "{\"USD\":41.5,\"EUR\":48.25}" }
 }

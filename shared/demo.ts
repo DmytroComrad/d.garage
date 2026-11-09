@@ -2,7 +2,10 @@ import { genId } from "./format";
 import { messages } from "./i18n";
 import type { Car, CarProfile, FuelRecord, ServiceRecord, Wish } from "./types";
 
-/** Приклад гаража: цифри з критеріїв приймання, назви знеособлені й перекладені мовою інтерфейсу. */
+/**
+ * Приклад гаража: цифри з критеріїв приймання, назви знеособлені й перекладені мовою інтерфейсу.
+ * Суми в гривнях: з англійським інтерфейсом підсумки одразу показують перерахунок у долари.
+ */
 export function demoRecords(today: string): {
   car: Car;
   profile: CarProfile;
@@ -21,6 +24,7 @@ export function demoRecords(today: string): {
     what,
     where,
     sum,
+    currency: "UAH",
     note: "",
     items: [],
   });
@@ -31,6 +35,7 @@ export function demoRecords(today: string): {
     odo,
     liters,
     sum,
+    currency: "UAH",
     station,
     full: true,
     note: "",
@@ -42,6 +47,7 @@ export function demoRecords(today: string): {
     title,
     price,
     priceMax: null,
+    currency: "UAH",
     links: [],
     note,
     added: today,

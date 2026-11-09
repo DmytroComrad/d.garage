@@ -7,7 +7,7 @@ import { drainQueue, reconcileQueue, type DrainIO } from "../../src/lib/sync";
 const carOp = (id: string): Op => ({ type: "car.put", data: { id, name: id } });
 const fuelOp = (id: string, car: string): Op => ({
   type: "fuel.put",
-  data: { id, car, date: "2026-08-21", odo: 1000, liters: 30, sum: 2000, station: "", full: true, note: "", grade: null },
+  data: { id, car, date: "2026-08-21", odo: 1000, liters: 30, sum: 2000, currency: "UAH", station: "", full: true, note: "", grade: null },
 });
 const ok: OpsResponse = { rejected: [], remapped: {} };
 

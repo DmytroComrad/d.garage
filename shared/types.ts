@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import type { RawBackup } from "./backup";
+import type { FxRates } from "./currency";
 import type {
   carProfileSchema,
   carSchema,
@@ -115,7 +116,8 @@ export type AppConfig = {
 
 /* Відповіді API: сервер перевіряє їх через satisfies, клієнт читає ті самі типи. */
 
-export type StateResponse = { user: User; data: GarageData; drive: DriveStatus };
+/** Разом із даними — курси НБУ на дати записів людини й на сьогодні: за ними підсумки рахуються в її валюті. */
+export type StateResponse = { user: User; data: GarageData; drive: DriveStatus; rates: FxRates };
 export type AuthResponse = { user: User };
 export type PhotoResponse = { photo: Photo };
 export type ManualResponse = { manual: Manual };

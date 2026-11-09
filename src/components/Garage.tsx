@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { profileSummary } from "../../shared/carProfile";
-import { fmtConsumption, fmtDate, fmtDist, fmtMoney0, fmtPerDist } from "../../shared/format";
+import { fmtConsumption, fmtDate, fmtDist, fmtPerDist, fmtTotal } from "../../shared/format";
+import { showCurrencyHint } from "../../shared/prefs";
 import { reminderText } from "../../shared/reminders";
 import {
+  dismissCurrencyHint,
   dispatch,
   loadDemo,
   markReminderDone,
@@ -22,6 +24,7 @@ import { GalleryTab } from "./GalleryTab";
 import { ManualsTab } from "./ManualsTab";
 import { LampIcon, PersonIcon } from "./icons";
 import { LangMenu } from "./LangMenu";
+import { HeadlineMoney } from "./Ledger";
 import { Mono } from "./Mono";
 import { Odometer } from "./Odometer";
 import { RemindersTab } from "./RemindersTab";
@@ -81,8 +84,29 @@ function Banners() {
   const offline = useStore((s) => s.offline);
   const pending = useStore((s) => s.queue.length);
   const storageOk = useStore((s) => s.storageOk);
+  const currencyHint = useStore((s) => showCurrencyHint(s.prefs));
   return (
     <>
+      {currencyHint && (
+        <div className="banner banner-quiet">
+          <p>{t.currency.suggest}</p>
+          <div className="banner-actions">
+            <button
+              type="button"
+              className="btn btn-ink btn-small"
+              onClick={() => {
+                dismissCurrencyHint();
+                openDialog({ type: "account" });
+              }}
+            >
+              {t.currency.choose}
+            </button>
+            <button type="button" className="btn btn-quiet btn-small" onClick={dismissCurrencyHint}>
+              {t.currency.noThanks}
+            </button>
+          </div>
+        </div>
+      )}
       {demo && (
         <div className="banner">
           <p>
@@ -186,7 +210,7 @@ function Hero({ carId, actionsRef }: { carId: string; actionsRef: RefObject<HTML
   const name = useStore((s) => s.data.cars.find((c) => c.id === carId)?.name);
   const profile = useStore((s) => s.data.cars.find((c) => c.id === carId)?.profile);
   const profileLine = profileSummary(profile, t);
-  const { summary: s, fuelTotals: f } = useCarView(carId);
+  const { summary: s, fuelTotals: f, totals, second } = useCarView(carId);
 
   return (
     <section className="hero">
@@ -215,15 +239,17 @@ function Hero({ carId, actionsRef }: { carId: string; actionsRef: RefObject<HTML
       <dl className="gauges">
         <div className="gauge gauge-main">
           <dt>{t.hero.total}</dt>
-          <dd>{fmtMoney0(s.total)}</dd>
+          <dd>
+            <HeadlineMoney total={totals.all} second={second} />
+          </dd>
         </div>
         <div className="gauge">
           <dt>{t.hero.service}</dt>
-          <dd>{fmtMoney0(s.serviceTotal)}</dd>
+          <dd>{fmtTotal(totals.service)}</dd>
         </div>
         <div className="gauge">
           <dt>{t.hero.fuel}</dt>
-          <dd>{fmtMoney0(s.fuelTotal)}</dd>
+          <dd>{fmtTotal(totals.fuel)}</dd>
         </div>
         <div className="gauge">
           <dt>{t.hero.avgConsumption}</dt>

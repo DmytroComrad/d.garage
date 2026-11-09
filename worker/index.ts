@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppConfig, StateResponse } from "../shared/types";
 import { auth, publicUser } from "./auth";
 import { data, loadGarage } from "./data";
+import { backfillBudget, backfillRates, nbuToday, ratesFor } from "./fx";
 import { driveStatus, googleConfigured } from "./google/connection";
 import { google } from "./google/oauth";
 import { collectGarbage, migrateBatch } from "./media";
@@ -17,7 +18,7 @@ import { ApiError, type AppEnv, type Bindings } from "./types";
 const app = new Hono<AppEnv>().basePath("/api");
 
 /** Версія форми відповіді /api/state. Підвищуй, коли в даних з'являються нові поля. */
-const STATE_FORMAT = 2;
+const STATE_FORMAT = 3;
 
 app.use("*", async (c, next) => {
   // Захист від CSRF: зміни приймаємо лише зі свого ж походження. Cookie до того ж SameSite=Lax.
@@ -48,16 +49,27 @@ app.get("/state", requireUser, async (c) => {
   const user = c.get("user");
   // Дані не змінились, тож не читаємо всі рядки користувача заново. rev оновлюють тригери бази,
   // а STATE_FORMAT — коли змінюється сама форма даних (як-от поле storage у фото), щоб кеш клієнтів оновився.
-  const etag = `"${user.id}:${user.rev}:${STATE_FORMAT}"`;
-  c.header("ETag", etag);
+  // День у версії, бо з ним приходить курс на сьогодні.
+  const today = nbuToday();
+  const etag = `"${user.id}:${user.rev}:${STATE_FORMAT}:${today}"`;
   // Cloudflare при стисканні робить ETag слабким: браузер повертає його з префіксом W/.
-  if (c.req.header("if-none-match")?.replace(/^W\//, "") === etag) return c.body(null, 304);
+  if (c.req.header("if-none-match")?.replace(/^W\//, "") === etag) {
+    c.header("ETag", etag);
+    return c.body(null, 304);
+  }
 
   const [garage, drive] = await Promise.all([
     loadGarage(c.env.DB, user.id, user.demo),
     driveStatus(c.env.DB, user.id),
   ]);
-  return c.json({ user: publicUser(user), data: garage, drive } satisfies StateResponse);
+  // Без курсів сайт теж працює: суми без курсу показуються як є.
+  const { rates, complete } = await ratesFor(c.env, garage, today).catch((err: unknown) => {
+    console.warn(JSON.stringify({ event: "fx_failed", message: String(err) }));
+    return { rates: {}, complete: false };
+  });
+  // Неповні курси — інша версія: наступний запит не отримає 304 і забере те, що встигли дотягнути.
+  c.header("ETag", complete ? etag : `"${user.id}:${user.rev}:${STATE_FORMAT}:${today}:partial"`);
+  return c.json({ user: publicUser(user), data: garage, drive, rates } satisfies StateResponse);
 });
 
 app.route("/auth", auth);
@@ -101,8 +113,10 @@ export default {
     return app.fetch(request, env, ctx);
   },
   async scheduled(_controller: ScheduledController, env: Bindings, ctx: ExecutionContext) {
-    ctx.waitUntil(
-      Promise.allSettled([cleanupExpired(env.DB), collectGarbage(env).then(() => migrateBatch(env))]).then(() => undefined),
-    );
+    // Курси дотягуються після фото й лише в межах того, що лишилось від 50 зовнішніх запитів на виклик.
+    const media = collectGarbage(env)
+      .then(() => migrateBatch(env))
+      .then((t) => backfillRates(env, backfillBudget(t.moved + t.gone + t.failed)));
+    ctx.waitUntil(Promise.allSettled([cleanupExpired(env.DB), media]).then(() => undefined));
   },
 } satisfies ExportedHandler<Bindings>;

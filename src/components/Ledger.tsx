@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { fmtMoney0, fmtMonthKey } from "../../shared/format";
+import type { Total } from "../../shared/currency";
+import { fmtMoney0, fmtMonthKey, fmtTotal } from "../../shared/format";
 import type { Photo } from "../../shared/types";
 import { photoUrl } from "../lib/photos";
 import { openDialog, useT } from "../lib/store";
+import type { CarView } from "../lib/view";
 import { CheckIcon, PumpIcon, TrashIcon, WrenchIcon } from "./icons";
 import { Mono } from "./Mono";
 
@@ -11,6 +13,22 @@ export const Summary = ({ title, children }: { title: string; children: ReactNod
     <h2 className="sheet-title">{title}</h2>
     {children}
   </section>
+);
+
+/**
+ * Головна сума в основній валюті, а під нею дрібніше — та сама сума в додатковій.
+ * Обидві пораховані за курсом на дату кожного запису, тож друга — не перерахунок першої за сьогоднішнім курсом.
+ */
+export const HeadlineMoney = ({ total, second }: { total: Total; second: CarView["second"] }) => (
+  <>
+    {fmtTotal(total)}
+    {second && (
+      <>
+        {" "}
+        <span className="money-second">{fmtTotal(second.total, fmtMoney0, second.currency)}</span>
+      </>
+    )}
+  </>
 );
 
 export const KeyValue = ({

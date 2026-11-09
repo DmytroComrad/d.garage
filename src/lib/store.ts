@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { mergeBackup, type RawBackup } from "../../shared/backup";
 import type { ContactDraft } from "../../shared/contacts";
+import { DEFAULT_CURRENCY, type Currency, type FxRates } from "../../shared/currency";
 import { demoRecords } from "../../shared/demo";
 import { genId, todayISO } from "../../shared/format";
 import { MESSAGES, messages, type Messages } from "../../shared/i18n";
 import { applyOp, emptyData } from "../../shared/ops";
-import { applyPrefs, readPrefs, type Prefs } from "../../shared/prefs";
+import { applyPrefs, nextPrefs, pickMain, pickSecond, readPrefs, type Prefs } from "../../shared/prefs";
 import { remindersToNotify, type RemindersRow } from "../../shared/reminders";
 import type {
   AppConfig,
@@ -32,8 +33,8 @@ import { carView, type CarView } from "./view";
 export type Tab = "service" | "fuel" | "reminders" | "wishes" | "manuals" | "contacts" | "gallery" | "stats" | "data";
 export type Theme = "auto" | "light" | "dark";
 
-/** Що підставити в нову сервісну форму: так хотілка стає записом витрат. */
-export type ServiceDraft = { what: string; sum: number | null; note: string };
+/** Що підставити в нову сервісну форму: так хотілка стає записом витрат, у тій самій валюті. */
+export type ServiceDraft = { what: string; sum: number | null; note: string; currency: Currency };
 
 export type Dialog =
   | { type: "fuel"; record?: FuelRecord; car?: string }
@@ -61,6 +62,8 @@ export type AppState = {
   user: User | null;
   data: GarageData;
   drive: DriveStatus;
+  /** Курси НБУ на дати записів: за ними підсумки рахуються в основній валюті. */
+  rates: FxRates;
   etag: string | null;
   active: string | null;
   tab: Tab;
@@ -95,6 +98,9 @@ type StoredUi = {
   lang?: unknown;
   unit?: unknown;
   dateFormat?: unknown;
+  dual?: unknown;
+  currency?: unknown;
+  currencyHintOff?: unknown;
   reminderNoteSeen?: boolean;
   fuelNoteSeen?: boolean;
 };
@@ -119,6 +125,7 @@ let state: AppState = {
   user: null,
   data: emptyData(),
   drive: noDrive,
+  rates: {},
   etag: null,
   active: ui.active ?? null,
   tab: ui.tab && TABS.includes(ui.tab) ? ui.tab : "service",
@@ -163,7 +170,8 @@ export const useT = (): Messages => MESSAGES[useStore((s) => s.prefs).lang];
 export const useCarView = (carId: string): CarView => {
   const data = useStore((s) => s.data);
   const prefs = useStore((s) => s.prefs);
-  return carView(data, carId, todayISO(), prefs);
+  const rates = useStore((s) => s.rates);
+  return carView(data, carId, todayISO(), prefs, rates);
 };
 
 const cache = createCache(() => localStorage);
@@ -190,6 +198,7 @@ const saveCache = (): void => {
     user: state.user,
     data: state.data,
     drive: state.drive,
+    rates: state.rates,
     queue: state.queue,
     etag: state.etag,
   });
@@ -272,13 +281,21 @@ const applyDocumentLang = (): void => {
   document.querySelector('meta[name="description"]')?.setAttribute("content", t.meta.description);
 };
 
-export const setPrefs = (patch: Partial<Prefs>): void => {
-  const prefs = { ...state.prefs, ...patch };
+const savePrefs = (prefs: Prefs): void => {
   applyPrefs(prefs);
   setState({ prefs });
   saveUi();
   applyDocumentLang();
 };
+
+export const setPrefs = (patch: Partial<Prefs>): void => savePrefs(nextPrefs(state.prefs, patch));
+
+/** Від цієї миті валюти не йдуть за мовою: людина вибрала свої. */
+export const setMainCurrency = (main: Currency): void => savePrefs(pickMain(state.prefs, main));
+export const setSecondCurrency = (second: Currency | null): void => savePrefs(pickSecond(state.prefs, second));
+
+/** Підказку про другу валюту більше не показуємо, доки не зміниться мова. */
+export const dismissCurrencyHint = (): void => setPrefs({ currencyHintOff: true });
 
 export const dismissReminderNote = (): void => {
   setState({ reminderNoteSeen: true });
@@ -380,13 +397,20 @@ export function dispatch(...ops: Op[]): void {
   void flush();
 }
 
-/** Кеш зі старої версії застосунку міг не мати нових списків. */
-const withDefaults = (data: GarageData): GarageData => ({
-  ...emptyData(),
-  ...data,
-  wishes: data.wishes ?? [],
-  contacts: data.contacts ?? [],
-});
+/** Записи з кешу чи черги старої версії валюти не мають: вони в гривнях, як і на сервері. */
+const withCurrency = <T extends { currency: Currency }>(list: T[]): T[] =>
+  list.some((r) => !r.currency) ? list.map((r) => (r.currency ? r : { ...r, currency: DEFAULT_CURRENCY })) : list;
+
+/** Кеш зі старої версії застосунку міг не мати нових списків і полів. */
+const withDefaults = (data: GarageData): GarageData => {
+  const full = { ...emptyData(), ...data, wishes: data.wishes ?? [], contacts: data.contacts ?? [] };
+  return {
+    ...full,
+    service: withCurrency(full.service),
+    fuel: withCurrency(full.fuel),
+    wishes: withCurrency(full.wishes),
+  };
+};
 
 export async function refresh({ force = false } = {}): Promise<void> {
   try {
@@ -395,14 +419,15 @@ export async function refresh({ force = false } = {}): Promise<void> {
       setState({ offline: false });
       return;
     }
-    const { user, data: server, drive } = res.body;
+    const { user, data: server, drive, rates } = res.body;
     const pending = cache.readPending();
     const queue = reconcileQueue({ localUserId: state.user?.id ?? null, serverUserId: user.id, queue: state.queue, pending });
     if (pending) cache.clearPending();
     // Операції, які ще не дійшли до сервера, накладаємо поверх свіжих даних.
     let data = withDefaults(server);
     for (const op of queue) data = applyOp(data, op);
-    setState({ user, data, drive, queue, etag: res.etag, phase: "ready", offline: false });
+    data = withDefaults(data);
+    setState({ user, data, drive, rates: rates ?? {}, queue, etag: res.etag, phase: "ready", offline: false });
     ensureActive();
     saveCache();
   } catch (err) {
@@ -490,7 +515,7 @@ export async function boot(): Promise<void> {
 
   const cached = cache.read();
   if (cached) {
-    setState({ ...cached, data: withDefaults(cached.data), phase: "ready" });
+    setState({ ...cached, data: withDefaults(cached.data), rates: cached.rates ?? {}, phase: "ready" });
     ensureActive();
   }
 
@@ -576,7 +601,7 @@ export const removePhoto = (id: string): void => {
 export const setUploading = (delta: number): void => setState({ uploading: Math.max(0, state.uploading + delta) });
 
 export const currentOdo = (carId: string): number | null =>
-  carView(state.data, carId, todayISO(), state.prefs).summary.currentOdo;
+  carView(state.data, carId, todayISO(), state.prefs, state.rates).summary.currentOdo;
 
 /** Запам'ятовує показане вікно, щоб той самий поріг не вискакував удруге. */
 export function dueReminderDialog(carId: string, afterSave: boolean): Dialog {

@@ -83,7 +83,8 @@ describe("хотілки", () => {
     const res = await client.call("/api/ops", { body: { ops: [car, wish()] } });
     expect(await res.json()).toEqual({ rejected: [], remapped: {} });
     const { data } = await state(client);
-    expect(data.wishes).toEqual([wish().data]);
+    // Клієнт без поля валюти: хотілка в гривнях, як було до валют.
+    expect(data.wishes).toEqual([{ ...wish().data, currency: "UAH" }]);
 
     await client.call("/api/ops", { body: { ops: [{ type: "wish.del", id: "w1" }] } });
     expect((await state(client)).data.wishes).toEqual([]);

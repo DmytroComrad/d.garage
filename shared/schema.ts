@@ -10,6 +10,7 @@ import {
   roundEngine,
 } from "./carProfile";
 import { LIMITS } from "./constants";
+import { CURRENCIES, DEFAULT_CURRENCY } from "./currency";
 import { FUEL_GRADES, type FuelGrade } from "./fuelGrades";
 import { isEmailAddress, isHttpUrl, isIsoDate, isPhone } from "./parse";
 
@@ -22,6 +23,8 @@ const money = z
   .max(LIMITS.maxSum)
   .transform((v) => Math.round(v * 100) / 100);
 const odo = z.number().int().min(0).max(LIMITS.maxOdo);
+/** Валюта суми. Старі клієнти поля не знають: їхні записи в гривнях, як і було. */
+const currency = z.enum(CURRENCIES).default(DEFAULT_CURRENCY);
 
 /** car.put несе лише назву: так перейменування, навіть зі старого клієнта, не стирає профіль. */
 export const carSchema = z.object({ id, name: z.string().trim().min(1).max(LIMITS.carNameLength) });
@@ -77,6 +80,8 @@ export const serviceSchema = z.object({
   what: z.string().trim().min(1).max(LIMITS.whatLength),
   where: z.string().trim().max(LIMITS.placeLength),
   sum: money,
+  /** Суми позицій — у тій самій валюті, що й запис. */
+  currency,
   note: z.string().trim().max(LIMITS.noteLength),
   items: z.array(serviceItemSchema).max(LIMITS.itemsPerRecord).default([]),
 });
@@ -88,6 +93,7 @@ export const fuelSchema = z.object({
   odo,
   liters: z.number().finite().positive().max(LIMITS.maxLiters),
   sum: money.refine((v) => v > 0),
+  currency,
   station: z.string().trim().max(LIMITS.placeLength),
   full: z.boolean(),
   note: z.string().trim().max(LIMITS.noteLength),
@@ -118,6 +124,7 @@ export const wishSchema = z
     price: money.nullable(),
     // Старі клієнти поля не знають: для них це одна ціна.
     priceMax: money.nullable().default(null),
+    currency,
     links: z.array(z.string().trim().refine(isHttpUrl)).max(LIMITS.linksPerWish).default([]),
     note: z.string().trim().max(LIMITS.noteLength),
     added: isoDate,
@@ -188,6 +195,8 @@ export const registerSchema = z.object({
 
 export const sheetExportSchema = z.object({
   dateFormat: z.enum(["dmy", "mdy", "ymd"]).default("dmy"),
+  /** Основна валюта людини: у ній рахується лист зведення. Самі записи — у своїх валютах. */
+  currency: z.enum(CURRENCIES).default(DEFAULT_CURRENCY),
 });
 
 export const loginSchema = z.object({

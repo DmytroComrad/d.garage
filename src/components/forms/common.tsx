@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { CURRENCIES, CURRENCY_SYMBOLS, type Currency } from "../../../shared/currency";
 import { genId, todayISO } from "../../../shared/format";
+import { mainCurrency } from "../../../shared/prefs";
 import { buildReminder, reminderDraft } from "../../../shared/reminders";
 import type { Op, Reminder } from "../../../shared/types";
 import { uploadPhotos } from "../../lib/photos";
@@ -31,6 +33,44 @@ export const CarSelect = ({ value, onChange }: { value: string; onChange: (v: st
     </Field>
   );
 };
+
+/** Валюта нового запису — основна з налаштувань; запис, який редагують, лишається у своїй. */
+export const useMainCurrency = (): Currency => useStore((s) => mainCurrency(s.prefs));
+
+/** Компактний вибір валюти поруч із сумою. Інша валюта не перераховує вписане число: людина пише суму з чека. */
+export const CurrencySelect = ({ value, onChange }: { value: Currency; onChange: (c: Currency) => void }) => {
+  const t = useT();
+  return (
+    <select
+      className="currency-select"
+      aria-label={t.currency.pick}
+      value={value}
+      onChange={(e) => onChange(e.target.value as Currency)}
+    >
+      {CURRENCIES.map((c) => (
+        <option key={c} value={c} title={c}>
+          {CURRENCY_SYMBOLS[c]}
+        </option>
+      ))}
+    </select>
+  );
+};
+
+/** Поле суми з вибором валюти праворуч. */
+export const MoneyInput = ({
+  children,
+  currency,
+  onCurrency,
+}: {
+  children: ReactNode;
+  currency: Currency;
+  onCurrency: (c: Currency) => void;
+}) => (
+  <span className="input-with-currency">
+    {children}
+    <CurrencySelect value={currency} onChange={onCurrency} />
+  </span>
+);
 
 export const Suggest = ({ id, values }: { id: string; values: string[] }) => (
   <datalist id={id}>

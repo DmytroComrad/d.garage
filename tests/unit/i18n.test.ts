@@ -23,6 +23,7 @@ const wish = (over: Partial<Wish> = {}): Wish => ({
   title: "Зимова гума",
   price: 14000,
   priceMax: null,
+  currency: "UAH",
   links: ["https://example.com/tires"],
   note: "",
   added: "2026-09-01",
@@ -59,10 +60,24 @@ describe("словники", () => {
   });
 
   it("за замовчуванням англійська, кілометри й дд.мм.рррр", () => {
-    expect(DEFAULT_PREFS).toEqual({ lang: "en", unit: "km", dateFormat: "dmy", dual: false });
+    expect(DEFAULT_PREFS).toEqual({
+      lang: "en",
+      unit: "km",
+      dateFormat: "dmy",
+      dual: false,
+      currency: null,
+      currencyHintOff: false,
+    });
     expect(readPrefs(null)).toEqual(DEFAULT_PREFS);
     expect(readPrefs({ lang: "de", unit: "parsecs", dateFormat: 5 })).toEqual(DEFAULT_PREFS);
-    expect(readPrefs({ lang: "uk", unit: "mi", dateFormat: "ymd" })).toEqual({ lang: "uk", unit: "mi", dateFormat: "ymd", dual: false });
+    expect(readPrefs({ lang: "uk", unit: "mi", dateFormat: "ymd" })).toEqual({
+      lang: "uk",
+      unit: "mi",
+      dateFormat: "ymd",
+      dual: false,
+      currency: null,
+      currencyHintOff: false,
+    });
     expect(readPrefs({ dual: "yes" }).dual).toBe(false);
     expect(readPrefs({ dual: true }).dual).toBe(true);
   });
@@ -93,7 +108,7 @@ describe("одиниці відстані", () => {
   });
 
   it("пробіг, витрата й ціна кілометра переводяться в милі", () => {
-    use({ unit: "mi" });
+    use({ unit: "mi", currency: { main: "UAH", second: null } });
     expect(nb(fmtDist(100000))).toBe("62,137 mi");
     // 7,84 л/100 км = 12,6 л/100 миль; 47,53 ₴/км = 76,49 ₴/милю.
     expect(nb(fmtConsumption(7.84))).toBe("12.6 L/100 mi");

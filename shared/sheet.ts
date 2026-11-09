@@ -1,6 +1,7 @@
 import { BODY_TYPES, EMPTY_PROFILE, FUEL_TYPES } from "./carProfile";
 import { carSummary, fuelCalcs, fuelSummary } from "./calc";
 import { CATEGORIES, ITEM_KINDS, categoryLabel, itemKindLabel } from "./constants";
+import { CURRENCY_SYMBOLS, DEFAULT_CURRENCY, readCurrency, recordIn, type Currency, type FxRates } from "./currency";
 import { FUEL_GRADES, type FuelGrade } from "./fuelGrades";
 import { MESSAGES, type Messages } from "./i18n";
 import { parseDecimal } from "./parse";
@@ -15,6 +16,8 @@ import type { Contact, GarageData, ItemKind } from "./types";
  * Назви листів і стовпців — мовою інтерфейсу, а читаються таблиці будь-якою з мов.
  * Відстані завжди в кілометрах: таблиця — це ще й бекап, одиниці в ньому не мають залежати від налаштувань.
  * Профіль машини — у кінці зведення: кузов і пальне підписані мовою таблиці, а читаються будь-якою.
+ * Суми записів — у валюті кожного запису (стовпець «Валюта»), а зведення — в основній валюті людини,
+ * перераховане за курсом на дату кожного запису, як на сайті.
  */
 export type Cell = string | number | null | { date: string };
 export type ColumnFormat = "text" | "money" | "int" | "dec1" | "liters" | "date";
@@ -36,14 +39,20 @@ export const sheetTitles = (lang: Lang): string[] => SHEET_KEYS.map((k) => MESSA
 /** Назви листів-бекапу всіма мовами: по них сервер шукає і прибирає старі листи. */
 export const ALL_SHEET_TITLES: ReadonlySet<string> = new Set(LANGS.flatMap(sheetTitles));
 
+/** Валюта зведення й курси для перерахунку. Без курсів перераховується лише те, що вже в цій валюті. */
+export type SheetMoney = { currency: Currency; rates: FxRates };
+
 export function buildSheets(
   data: Pick<GarageData, "cars" | "service" | "fuel" | "reminders" | "wishes"> & { contacts: Contact[] },
   today: string,
   lang: Lang,
+  money: SheetMoney = { currency: DEFAULT_CURRENCY, rates: {} },
 ): Sheet[] {
   const m = MESSAGES[lang];
   const c = m.sheet.col;
   const col = (key: ColKey, format: ColumnFormat = "text"): Column => ({ title: c[key], format });
+  // Стовпці зведення: «Вложено всего, $» — у валюті, в якій їх пораховано.
+  const colIn = (key: ColKey): Column => ({ title: `${c[key]}, ${CURRENCY_SYMBOLS[money.currency]}`, format: "money" });
   const yesNo = (v: boolean) => (v ? m.sheet.yes : m.sheet.no);
   const carName = new Map(data.cars.map((car) => [car.id, car.name]));
   const byDate = <T extends { date: string }>(list: T[]) => [...list].sort((a, b) => a.date.localeCompare(b.date));
@@ -52,20 +61,20 @@ export function buildSheets(
     title: m.sheet.tabs.summary,
     columns: [
       col("car"),
-      col("total", "money"),
-      col("service", "money"),
-      col("fuel", "money"),
-      col("thisYear", "money"),
+      colIn("total"),
+      colIn("service"),
+      colIn("fuel"),
+      colIn("thisYear"),
       col("currentOdo", "int"),
       col("startOdo", "int"),
       col("driven", "int"),
-      col("perKm", "money"),
+      colIn("perKm"),
       col("avgUse", "dec1"),
       col("lastUse", "dec1"),
       col("fills", "int"),
       col("poured", "liters"),
-      col("avgPrice", "money"),
-      col("fuelPerKm", "money"),
+      colIn("avgPrice"),
+      colIn("fuelPerKm"),
       col("since", "date"),
       // Рік і об'єм — у загальному форматі: без розділювача тисяч і зайвих нулів.
       col("year"),
@@ -79,8 +88,8 @@ export function buildSheets(
       col("about"),
     ],
     rows: data.cars.map((car) => {
-      const service = data.service.filter((r) => r.car === car.id);
-      const fuel = data.fuel.filter((r) => r.car === car.id);
+      const service = data.service.filter((r) => r.car === car.id).map((r) => recordIn(r, money.currency, money.rates));
+      const fuel = data.fuel.filter((r) => r.car === car.id).map((r) => recordIn(r, money.currency, money.rates));
       const s = carSummary(service, fuel, today);
       const f = fuelSummary(fuel);
       const p = car.profile ?? EMPTY_PROFILE;
@@ -124,6 +133,7 @@ export function buildSheets(
       col("what"),
       col("where"),
       col("sum", "money"),
+      col("currency"),
       col("note"),
       col("id"),
     ],
@@ -135,6 +145,7 @@ export function buildSheets(
       r.what,
       r.where,
       r.sum,
+      r.currency,
       r.note,
       r.id,
     ]),
@@ -142,7 +153,16 @@ export function buildSheets(
 
   const items: Sheet = {
     title: m.sheet.tabs.items,
-    columns: [col("car"), col("date", "date"), col("record"), col("kind"), col("name"), col("sum", "money"), col("recordId")],
+    columns: [
+      col("car"),
+      col("date", "date"),
+      col("record"),
+      col("kind"),
+      col("name"),
+      col("sum", "money"),
+      col("currency"),
+      col("recordId"),
+    ],
     rows: byDate(data.service).flatMap((r) =>
       r.items.map((it): Cell[] => [
         carName.get(r.car) ?? "",
@@ -151,6 +171,7 @@ export function buildSheets(
         itemKindLabel(it.kind, m),
         it.name,
         it.sum,
+        r.currency,
         r.id,
       ]),
     ),
@@ -169,6 +190,7 @@ export function buildSheets(
       col("odo", "int"),
       col("liters", "liters"),
       col("sum", "money"),
+      col("currency"),
       col("price", "money"),
       col("sinceLast", "int"),
       col("use", "dec1"),
@@ -186,6 +208,7 @@ export function buildSheets(
         r.odo,
         r.liters,
         r.sum,
+        r.currency,
         round(calc?.price ?? null, 2),
         calc?.sinceLast ?? null,
         round(calc?.consumption ?? null, 2),
@@ -226,6 +249,7 @@ export function buildSheets(
       col("wish"),
       col("wishPrice", "money"),
       col("wishPriceMax", "money"),
+      col("currency"),
       col("links"),
       col("note"),
       col("added", "date"),
@@ -240,6 +264,7 @@ export function buildSheets(
         w.title,
         w.price,
         w.priceMax,
+        w.currency,
         w.links.join("\n"),
         w.note,
         { date: w.added },
@@ -345,19 +370,29 @@ const categoryByLabel = (label: string): string =>
 
 type Row = Record<string, unknown>;
 
-/** Значення стовпця за назвою будь-якою мовою: користувач міг переставити стовпці чи змінити мову. */
+/**
+ * Назва стовпця без знака гривні. До появи валют суми підписувались «Сумма, ₴»: такі таблиці
+ * читаються так само, як нові, де валюта — в окремому стовпці.
+ */
+const header = (v: unknown): string => readStr(v).replace(/,\s*₴$/, "");
+
+/**
+ * Значення стовпця за назвою будь-якою мовою: користувач міг переставити стовпці чи змінити мову.
+ * Назву зі словника чистимо так само, як заголовок таблиці (header): «Ціна покупки, ₴» шукаємо як «Ціна покупки».
+ */
 const cell = (row: Row, key: ColKey): unknown => {
   for (const lang of LANGS) {
-    const value = row[MESSAGES[lang].sheet.col[key]];
+    const value = row[header(MESSAGES[lang].sheet.col[key])];
     if (value !== undefined) return value;
   }
   return undefined;
 };
 
+
 /** Лист → об'єкти за назвами стовпців. */
 const toRows = (values: unknown[][] | undefined): Row[] => {
   if (!values || values.length < 2) return [];
-  const headers = values[0].map(readStr);
+  const headers = values[0].map(header);
   return values.slice(1).map((row) => {
     const out: Row = {};
     headers.forEach((h, i) => {
@@ -431,6 +466,7 @@ export function sheetsToBackup(tabs: Record<string, unknown[][] | undefined>): R
         what: readStr(cell(r, "what")),
         where: readStr(cell(r, "where")),
         sum: readNum(cell(r, "sum")),
+        currency: readCurrency(cell(r, "currency")),
         note: readStr(cell(r, "note")),
         items: (itemsByRecord.get(id) ?? []).map((it) => ({
           kind: kindByLabel(readStr(cell(it, "kind"))),
@@ -452,6 +488,7 @@ export function sheetsToBackup(tabs: Record<string, unknown[][] | undefined>): R
         odo: readNum(cell(r, "odo")),
         liters: readNum(cell(r, "liters")),
         sum: readNum(cell(r, "sum")),
+        currency: readCurrency(cell(r, "currency")),
         station: readStr(cell(r, "station")),
         full: !NO.has(lower(cell(r, "full"))),
         grade: gradeFromLabel(readStr(cell(r, "grade"))),
@@ -485,6 +522,7 @@ export function sheetsToBackup(tabs: Record<string, unknown[][] | undefined>): R
         title: readStr(cell(r, "wish")),
         price: readNum(cell(r, "wishPrice")),
         priceMax: readNum(cell(r, "wishPriceMax")),
+        currency: readCurrency(cell(r, "currency")),
         links: readStr(cell(r, "links")).split(/\s+/).filter(Boolean),
         note: readStr(cell(r, "note")),
         added: readDate(cell(r, "added")),
