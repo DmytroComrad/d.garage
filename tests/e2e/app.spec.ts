@@ -360,6 +360,41 @@ test("ни одна вкладка не скроллится по горизон
   }
 });
 
+test("смуга вкладок на телефоні гортається лише вбік і не «плаває» вгору-вниз", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "дотики пальцем є лише в мобільному профілі");
+  await register(page);
+  await loadDemo(page);
+  const tabs = page.locator(".tabs");
+  const box = await tabs.boundingBox();
+  if (!box) throw new Error("немає смуги вкладок");
+
+  // Справжні дотики, як пальцем: від середини смуги на (dx, dy).
+  const cdp = await page.context().newCDPSession(page);
+  const swipe = async (dx: number, dy: number) => {
+    const x = box.x + box.width * 0.7;
+    const y = box.y + box.height / 2;
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+    for (let i = 1; i <= 10; i++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: x + (dx * i) / 10, y: y + (dy * i) / 10 }],
+      });
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    return tabs.evaluate((el) => ({ left: el.scrollLeft, top: el.scrollTop }));
+  };
+
+  // Навскіс: смуга їде вбік, а вертикально стоїть на місці.
+  const diagonal = await swipe(-120, -60);
+  expect(diagonal.left).toBeGreaterThan(0);
+  expect(diagonal.top).toBe(0);
+
+  // Вертикальний рух по смузі гортає сторінку, а не саму смугу.
+  const before = await page.evaluate(() => window.scrollY);
+  expect((await swipe(0, -40)).top).toBe(0);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
+});
+
 test("после ошибки регистрации проверка на робота выдаётся заново", async ({ page }) => {
   // Заглушка Turnstile: настоящий виджет не пропускает автоматический браузер.
   await page.addInitScript(() => {

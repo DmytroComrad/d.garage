@@ -225,6 +225,8 @@ td,
   display: flex;
   gap: 6px;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
   padding: 4px 2px;
 }
@@ -754,10 +756,16 @@ td,
   padding: 0 var(--gutter-r) 0 var(--gutter-l);
 }
 
+/*
+ * Смуга гортається лише вбік. Підкреслення активної вкладки виступає на 1 px униз, і з overflow-y: auto
+ * смуга на телефоні прокручувалась ще й вертикально: «плавала» вгору-вниз, коли її тягнули пальцем.
+ */
 .tabs {
   display: flex;
   gap: 22px;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
   border-bottom: 1px solid var(--line);
 }
@@ -1260,6 +1268,8 @@ td,
   background: var(--surface-2);
   border: 1px solid var(--line);
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
 
