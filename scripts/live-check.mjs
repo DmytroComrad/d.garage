@@ -24,6 +24,17 @@ const check = (label, ok, detail = "") => {
   if (!ok) failed = true;
 };
 const norm = (s) => (s ?? "").replace(/ /g, " ").trim();
+/** Головна сума без другої валюти, яку показуємо дрібніше поруч (.money-second). */
+const mainTotal = (p) =>
+  p.locator(".gauge-main dd").evaluate((el) =>
+    [...el.childNodes]
+      .filter((n) => !(n.nodeType === 1 && n.classList.contains("money-second")))
+      .map((n) => n.textContent)
+      .join("")
+      .replace(/\u00a0/g, " ")
+      .trim(),
+  );
+const PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 const browser = await chromium.launch();
 const now = Math.floor(Date.now() / 1000);
@@ -98,7 +109,12 @@ try {
 
   await page.getByRole("button", { name: "Посмотреть на примере" }).click();
   await page.getByRole("heading", { level: 1, name: "Демо-машина" }).waitFor();
-  check("приклад: вкладено 27 093 ₴", norm(await page.locator(".gauge-main dd").textContent()) === "27 093 ₴");
+  check("приклад: вкладено 27 093 ₴", (await mainTotal(page)) === "27 093 ₴", await mainTotal(page));
+  // Російською за замовчуванням друга валюта — долар, за курсом НБУ на дату кожного запису.
+  const second = norm(await page.locator(".gauge-main .money-second").textContent().catch(() => ""));
+  check("поруч друга валюта в доларах", /^\d[\d ]* \$$/.test(second), second);
+  const rates = await page.evaluate(() => fetch("/api/state").then((r) => r.json()).then((j) => Object.keys(j.rates ?? {}).length));
+  check("курси НБУ приходять із сервера", rates > 0, String(rates));
 
   // Нагадування і розбивка затрат на живій базі.
   await page.getByRole("button", { name: "+ Сервис" }).first().click();
@@ -148,11 +164,11 @@ try {
   });
   await page.reload();
   await page.getByRole("heading", { level: 1, name: "Демо-машина" }).waitFor();
-  check("після очищення браузера дані прийшли з сервера", norm(await page.locator(".gauge-main dd").textContent()) === "42 948 ₴");
+  check("після очищення браузера дані прийшли з сервера", (await mainTotal(page)) === "42 948 ₴", await mainTotal(page));
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${OUT}/live-desktop-hero.png` });
 
-  for (const [label, tab] of [["fuel", "Заправки"], ["reminders", "Напоминания"], ["wishes", "Хотелки"], ["contacts", "Контакты"], ["gallery", "Галерея"], ["stats", "Статистика"], ["data", "Данные"], ["service", "Обслуживание"]]) {
+  for (const [label, tab] of [["fuel", "Заправки"], ["reminders", "Напоминания"], ["wishes", "Хотелки"], ["manuals", "Мануалы"], ["contacts", "Контакты"], ["gallery", "Галерея"], ["stats", "Статистика"], ["data", "Данные"], ["service", "Обслуживание"]]) {
     await page.getByRole("tab", { name: tab }).click();
     await page.waitForTimeout(350);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -160,9 +176,30 @@ try {
     await page.screenshot({ path: `${OUT}/live-desktop-${label}.png`, fullPage: true });
   }
 
+  // Галерея без Google: справжнє фото йде в сховище R2 і повертається звідти, потім видаляється.
   await page.getByRole("tab", { name: "Галерея" }).click();
+  await page.getByRole("heading", { name: "Фото пока нет" }).waitFor();
+  const [upload] = await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith("/api/photos") && r.request().method() === "POST"),
+    page.locator('input[type="file"]').setInputFiles({ name: "live-check.png", mimeType: "image/png", buffer: Buffer.from(PNG_1PX, "base64") }),
+  ]);
+  check("фото завантажується в сховище", upload.status() === 200, String(upload.status()));
+  const uploaded = upload.ok() ? (await upload.json()).photo : null;
+  if (uploaded) {
+    const thumb = await page.request.get(`${BASE}/api/photos/${uploaded.id}/thumb`);
+    const type = thumb.headers()["content-type"];
+    check("мініатюра віддається зі сховища", thumb.status() === 200 && type === "image/jpeg", `${thumb.status()} ${type}`);
+    await page.locator(".photo-tile").first().click();
+    await page.getByRole("button", { name: "Удалить", exact: true }).click();
+    await page.getByRole("button", { name: "Да, удалить" }).click();
+    await page.getByRole("heading", { name: "Фото пока нет" }).waitFor();
+    check("фото видаляється", true);
+  }
+
+  // Google: кнопка Диска на вкладці «Данные» веде на вхід Google без помилки.
+  await page.getByRole("tab", { name: "Данные" }).click();
   const connect = page.getByRole("link", { name: "Подключить Google Диск" });
-  check("галерея пропонує підключити Диск", await connect.isVisible());
+  check("на вкладці «Данные» є кнопка Google Диска", await connect.isVisible());
   const href = await connect.getAttribute("href");
   const google = await desktop.ctx.newPage();
   await google.goto(`${BASE}${href}`);
@@ -184,7 +221,7 @@ try {
   const mobile = await openPage(devices["Pixel 7"], mobileSession);
   await mobile.page.goto(BASE);
   await mobile.page.getByRole("heading", { level: 1, name: "Демо-машина" }).waitFor();
-  check("телефон бачить ті самі дані", norm(await mobile.page.locator(".gauge-main dd").textContent()) === "42 948 ₴");
+  check("телефон бачить ті самі дані", (await mainTotal(mobile.page)) === "42 948 ₴", await mainTotal(mobile.page));
   await mobile.page.waitForTimeout(1500);
   await mobile.page.screenshot({ path: `${OUT}/live-mobile-hero.png` });
   for (const [label, tab] of [["fuel", "Заправки"], ["reminders", "Напоминания"], ["stats", "Статистика"], ["service", "Обслуживание"]]) {
@@ -209,7 +246,7 @@ try {
   await page.reload();
   await page.getByRole("heading", { level: 1, name: "Демо-машина" }).waitFor();
 
-  await page.getByRole("button", { name: /Профиль/ }).click();
+  await page.getByRole("button", { name: /^Профиль: / }).click();
   await page.getByRole("button", { name: "Выйти", exact: true }).click();
   await page.getByRole("heading", { name: "Вход" }).waitFor();
   check("вихід повертає на вхід", true);
@@ -223,7 +260,7 @@ try {
   const cookie = (await desktop.ctx.cookies()).find((c) => c.name === "__Host-session");
   check("вхід за паролем ставить безпечну cookie", Boolean(cookie?.secure && cookie?.httpOnly && cookie?.sameSite === "Lax"));
 
-  await page.getByRole("button", { name: /Профиль/ }).click();
+  await page.getByRole("button", { name: /^Профиль: / }).click();
   await page.getByText("Удалить аккаунт").first().click();
   await page.getByLabel("Пароль для подтверждения").fill(password);
   await page.getByRole("button", { name: "Удалить аккаунт" }).click();
