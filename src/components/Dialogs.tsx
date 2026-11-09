@@ -241,6 +241,10 @@ function AccountDialog() {
               </button>
             ))}
           </div>
+          <label className="check">
+            <input type="checkbox" checked={prefs.dual} onChange={(e) => setPrefs({ dual: e.target.checked })} />
+            <span>{t.account.dual[prefs.unit]}</span>
+          </label>
           <span className="field-hint">{t.account.unitsHint}</span>
         </div>
 

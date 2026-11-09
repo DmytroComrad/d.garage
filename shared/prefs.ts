@@ -5,12 +5,13 @@
 export type Lang = "en" | "uk" | "ru";
 export type Unit = "km" | "mi";
 export type DateFormat = "dmy" | "mdy" | "ymd";
-export type Prefs = { lang: Lang; unit: Unit; dateFormat: DateFormat };
+/** dual — показувати поруч і іншу одиницю: «12 000 км (7 456 mi)». */
+export type Prefs = { lang: Lang; unit: Unit; dateFormat: DateFormat; dual: boolean };
 
 export const LANGS: readonly Lang[] = ["en", "uk", "ru"];
 export const UNITS: readonly Unit[] = ["km", "mi"];
 export const DATE_FORMATS: readonly DateFormat[] = ["dmy", "mdy", "ymd"];
-export const DEFAULT_PREFS: Prefs = { lang: "en", unit: "km", dateFormat: "dmy" };
+export const DEFAULT_PREFS: Prefs = { lang: "en", unit: "km", dateFormat: "dmy", dual: false };
 
 export const isLang = (v: unknown): v is Lang => LANGS.includes(v as Lang);
 const isUnit = (v: unknown): v is Unit => UNITS.includes(v as Unit);
@@ -21,7 +22,10 @@ export const readPrefs = (raw: Partial<Record<keyof Prefs, unknown>> | null | un
   lang: isLang(raw?.lang) ? raw.lang : DEFAULT_PREFS.lang,
   unit: isUnit(raw?.unit) ? raw.unit : DEFAULT_PREFS.unit,
   dateFormat: isDateFormat(raw?.dateFormat) ? raw.dateFormat : DEFAULT_PREFS.dateFormat,
+  dual: raw?.dual === true,
 });
+
+export const otherUnit = (unit: Unit): Unit => (unit === "km" ? "mi" : "km");
 
 let current: Prefs = DEFAULT_PREFS;
 

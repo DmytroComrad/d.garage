@@ -183,6 +183,35 @@ test("мили и формат даты: показ меняется, данны
   await expect(page.getByRole("img", { name: nb("Пробег 328 306 км") })).toBeVisible();
 });
 
+test("обе единицы сразу: вторая в скобках, ввод остаётся в основной", async ({ page }) => {
+  await register(page);
+  await loadDemo(page);
+  await openProfile(page);
+  await page.getByLabel("Показывать и мили").check();
+  await page.getByRole("button", { name: "Закрыть" }).click();
+  await expect(page.locator(".hero")).toContainText(nb("проехано 570 км (354 мили)"));
+
+  await page.reload();
+  await expect(page.locator(".hero")).toContainText(nb("проехано 570 км (354 мили)"));
+  await page.getByRole("button", { name: "+ Заправка" }).first().click();
+  await expect(page.getByRole("dialog").getByLabel("Пробег, км")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Отмена" }).click();
+
+  // Основные — мили: подпись галочки меняется, километры уходят в скобки.
+  await openProfile(page);
+  await page.getByRole("button", { name: "Мили", exact: true }).click();
+  await expect(page.getByLabel("Показывать и километры")).toBeChecked();
+  await page.getByRole("button", { name: "Закрыть" }).click();
+  await expect(page.locator(".hero")).toContainText(nb("проехано 354 мили (570 км)"));
+
+  // Строки длиннее, но вёрстка на узком телефоне не ломается.
+  await page.setViewportSize({ width: 320, height: 760 });
+  for (const tab of ["Обслуживание", "Заправки", "Напоминания", "Статистика"]) {
+    await openTab(page, tab);
+    await expectNoHorizontalScroll(page);
+  }
+});
+
 test("бэкап можно перетащить файлом на карточку", async ({ page }) => {
   await register(page);
   await loadDemo(page);

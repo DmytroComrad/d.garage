@@ -254,6 +254,7 @@ export const en = {
     themes: { auto: "System", light: "Light", dark: "Dark" },
     units: "Distance",
     unitNames: { km: "Kilometers", mi: "Miles" },
+    dual: { km: "Also show miles", mi: "Also show kilometers" },
     unitsHint: "Records are stored in kilometers, so switching only changes how they're shown.",
     dateFormat: "Date format",
     changePassword: "Change password",
