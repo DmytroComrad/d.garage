@@ -1,10 +1,12 @@
-import { memo } from "react";
+import { memo, useId, useMemo } from "react";
 import { fuelChipTone, sumMoney, type FuelCalc } from "../../shared/calc";
 import { fmtConsumption, fmtDate, fmtDist, fmtLiters, fmtLiters1, fmtMoney, fmtMoney0, fmtNum, fmtPerDist } from "../../shared/format";
+import { EMPTY_INPUTS, filterFromInputs, filterRecords, recordMonths, sortRecords, sortsByDate } from "../../shared/listview";
 import type { FuelRecord, Photo } from "../../shared/types";
 import { deleteRecords, openDialog, toast, useCarView, useStore, useT } from "../lib/store";
 import { NO_PHOTOS } from "../lib/view";
 import { ConsumptionChart } from "./Charts";
+import { FilterPanel, FilterResult, ListControls, hasInputs, useListView } from "./ListTools";
 import {
   EmptyState,
   KeyValue,
@@ -66,8 +68,26 @@ export function FuelTab({ carId }: { carId: string }) {
   const t = useT();
   const unit = useStore((s) => s.prefs.unit);
   const { fuel, calcs, fuelTotals: f, photosByRecord } = useCarView(carId);
-  const sorted = [...fuel].sort((a, b) => b.date.localeCompare(a.date) || b.odo - a.odo);
-  const selection = useSelection(sorted.map((r) => r.id));
+  const [view, setView] = useListView("fuel");
+  const panelId = useId();
+  const months = useMemo(() => recordMonths(fuel), [fuel]);
+  const shown = useMemo(
+    () => sortRecords(filterRecords(fuel, filterFromInputs(view.inputs, unit)), view.sort),
+    [fuel, view.inputs, view.sort, unit],
+  );
+  const selection = useSelection(shown.map((r) => r.id));
+  const totals = (records: FuelRecord[]) =>
+    `${fmtLiters1(records.reduce((acc, r) => acc + r.liters, 0))} · ${fmtMoney0(sumMoney(records.map((r) => r.sum)))}`;
+  const row = (r: FuelRecord) => (
+    <FuelRow
+      key={r.id}
+      record={r}
+      calc={calcs.get(r.id)}
+      avg={f.avg}
+      photos={photosByRecord.get(r.id) ?? NO_PHOTOS}
+      select={selection.on ? { checked: selection.isPicked(r.id), onToggle: selection.toggle } : undefined}
+    />
+  );
 
   return (
     <div className="columns">
@@ -89,7 +109,7 @@ export function FuelTab({ carId }: { carId: string }) {
       </aside>
 
       <div className="list">
-        {sorted.length === 0 ? (
+        {fuel.length === 0 ? (
           <EmptyState title={t.fuel.emptyTitle} text={t.fuel.emptyText}>
             <button type="button" className="btn btn-fuel" onClick={() => openDialog({ type: "fuel", car: carId })}>
               {t.fuel.first}
@@ -97,28 +117,37 @@ export function FuelTab({ carId }: { carId: string }) {
           </EmptyState>
         ) : (
           <>
-            <SelectToggle selection={selection} />
-            {groupByMonth(sorted).map(([key, records]) => {
-              const liters = records.reduce((acc, r) => acc + r.liters, 0);
-              return (
-                <MonthGroup
-                  key={key}
-                  monthKey={key}
-                  total={`${fmtLiters1(liters)} · ${fmtMoney0(sumMoney(records.map((r) => r.sum)))}`}
-                >
-                  {records.map((r) => (
-                    <FuelRow
-                      key={r.id}
-                      record={r}
-                      calc={calcs.get(r.id)}
-                      avg={f.avg}
-                      photos={photosByRecord.get(r.id) ?? NO_PHOTOS}
-                      select={selection.on ? { checked: selection.isPicked(r.id), onToggle: selection.toggle } : undefined}
-                    />
-                  ))}
+            <SelectToggle selection={selection}>
+              <ListControls view={view} onChange={setView} panelId={panelId} />
+            </SelectToggle>
+            {view.open && (
+              <FilterPanel
+                id={panelId}
+                inputs={view.inputs}
+                months={months}
+                onChange={(inputs) => setView({ inputs })}
+                onClose={() => setView({ open: false })}
+              />
+            )}
+            {hasInputs(view.inputs) && (
+              <FilterResult
+                shown={shown.length}
+                total={fuel.length}
+                sum={totals(shown)}
+                onReset={() => setView({ inputs: EMPTY_INPUTS })}
+              />
+            )}
+            {shown.length === 0 ? (
+              <EmptyState title={t.list.nothingTitle} text={t.list.nothingText} />
+            ) : sortsByDate(view.sort) ? (
+              groupByMonth(shown).map(([key, records]) => (
+                <MonthGroup key={key} monthKey={key} total={totals(records)}>
+                  {records.map(row)}
                 </MonthGroup>
-              );
-            })}
+              ))
+            ) : (
+              <div className="sheet ledger">{shown.map(row)}</div>
+            )}
             <SelectBar
               selection={selection}
               onDelete={(ids) => {

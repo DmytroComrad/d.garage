@@ -74,6 +74,13 @@ export const CameraIcon = ({ size }: P) => (
   </Svg>
 );
 
+/** Воронка фільтра. */
+export const FilterIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M4 5h16l-6 7.5V19l-4-2v-4.5z" />
+  </Svg>
+);
+
 export const TrashIcon = ({ size }: P) => (
   <Svg size={size}>
     <path d="M4 7h16" />

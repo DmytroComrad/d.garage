@@ -2180,9 +2180,77 @@ input[type="date"] {
 
 .list-tools {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
+  gap: 8px;
   min-height: 34px;
+}
+
+/* Фільтр і сортування ліворуч, вибір записів праворуч. */
+.list-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.list-controls .btn.is-on {
+  border-color: var(--service-btn);
+  color: var(--service);
+}
+
+.filter-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--service-btn);
+}
+
+/* Компактний вибір порядку. 16 px — щоб iOS не масштабував сторінку при виборі. */
+select.sort-select {
+  width: auto;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 4px 10px;
+  border-color: var(--line);
+  font-size: 16px;
+}
+
+.filter-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 14px;
+}
+
+.filter-panel .btn-row {
+  align-items: center;
+}
+
+.filter-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin-top: 10px;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.wish-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.wish-head .wish-totals {
+  margin-bottom: 0;
 }
 
 .list-tools .muted {
@@ -2721,6 +2789,7 @@ body:has(.select-bar) .toast-host {
   .hero-actions,
   .tabs-wrap,
   .list-tools,
+  .filter-panel,
   .select-bar {
     display: none;
   }
