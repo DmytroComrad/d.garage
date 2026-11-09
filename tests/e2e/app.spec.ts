@@ -515,3 +515,38 @@ test("тема: тёмная по системе, выбор в профиле �
   await page.emulateMedia({ colorScheme: "light" });
   await expect.poll(theme).toBe("light");
 });
+
+test("галочки видно і в темній темі: поставлена залита кольором, порожня має чітку рамку", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await register(page);
+  await addCar(page, "Тест");
+  await page.getByRole("button", { name: "+ Заправка" }).first().click();
+  const box = page.getByRole("dialog").getByLabel(/Полный бак/);
+  await expect(box).toBeChecked();
+
+  // Контраст за WCAG між двома кольорами rgb(...): для елементів інтерфейсу потрібно щонайменше 3.
+  const contrast = (a: string, b: string): number => {
+    const lum = (c: string) => {
+      const [r, g, bl] = (c.match(/\d+/g) ?? []).slice(0, 3).map((v) => {
+        const s = Number(v) / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+    };
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const look = () =>
+    box.evaluate((el) => {
+      const s = getComputedStyle(el);
+      const surface = getComputedStyle(el.closest(".modal") ?? document.body).backgroundColor;
+      return { bg: s.backgroundColor, border: s.borderTopColor, surface };
+    });
+
+  const on = await look();
+  expect(contrast(on.bg, on.surface)).toBeGreaterThanOrEqual(3);
+  await box.uncheck();
+  const off = await look();
+  expect(off.bg).not.toBe(on.bg);
+  expect(contrast(off.border, off.surface)).toBeGreaterThanOrEqual(3);
+});

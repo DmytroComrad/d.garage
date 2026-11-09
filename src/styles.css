@@ -1699,11 +1699,66 @@ input[type="date"] {
   cursor: pointer;
 }
 
+/*
+ * Своя галочка замість системної: на iPhone системна в темній темі ледь відрізняє «так» від «ні».
+ * Порожня — чітка рамка, поставлена — синя заливка з білою позначкою, як вибрані кнопки .pick.
+ */
 .check input {
   flex: none;
-  width: 20px;
-  height: 20px;
-  accent-color: var(--ink);
+  display: inline-grid;
+  place-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 2px solid var(--ink-3);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.check input::before {
+  content: "";
+  width: 6px;
+  height: 11px;
+  margin-top: -2px;
+  border: solid #fff;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg) scale(0);
+}
+
+/* Лише з мишею: на телефоні :hover залипає після дотику, і порожня галочка виглядала б вибраною. */
+@media (hover: hover) {
+  .check input:hover {
+    border-color: var(--service-btn);
+  }
+}
+
+.check input:checked {
+  border-color: var(--service-btn);
+  background: var(--service-btn);
+}
+
+.check input:checked::before {
+  transform: rotate(45deg) scale(1);
+}
+
+.check input:focus-visible {
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* У режимі високої контрастності Windows заливки не видно: там краще системна галочка. */
+@media (forced-colors: active) {
+  .check input {
+    appearance: auto;
+    -webkit-appearance: auto;
+  }
+
+  .check input::before {
+    content: none;
+  }
 }
 
 .field-row {
@@ -2106,7 +2161,7 @@ input[type="date"] {
 }
 
 .rec-check {
-  border: 2px solid var(--line);
+  border: 2px solid var(--ink-3);
   color: var(--surface);
   background: var(--surface);
 }
@@ -2246,8 +2301,10 @@ body:has(.select-bar) .toast-host {
   color: #fff;
 }
 
-.wish-check:hover {
-  border-color: var(--good);
+@media (hover: hover) {
+  .wish-check:hover {
+    border-color: var(--good);
+  }
 }
 
 .wish-check.is-on {
