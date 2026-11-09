@@ -13,7 +13,7 @@ const media = base.MEDIA;
 
 type Client = { call: (path: string, init?: { method?: string; body?: unknown; form?: FormData }) => Promise<Response> };
 
-const newClient = (): Client => {
+const newClient = (extra: Record<string, unknown> = {}): Client => {
   let cookie = "";
   return {
     call: async (path, { method, body, form } = {}) => {
@@ -26,7 +26,7 @@ const newClient = (): Client => {
           headers,
           body: form ?? (body !== undefined ? JSON.stringify(body) : undefined),
         }),
-        base,
+        { ...base, ...extra },
         ctx,
       );
       await waitOnExecutionContext(ctx);
@@ -37,8 +37,8 @@ const newClient = (): Client => {
   };
 };
 
-const register = async () => {
-  const client = newClient();
+const register = async (extra: Record<string, unknown> = {}) => {
+  const client = newClient(extra);
   const email = `m-${crypto.randomUUID().slice(0, 10)}@example.com`;
   const res = await client.call("/api/auth/register", { body: { email, password: "correct horse battery" } });
   const { user } = await res.json<{ user: { id: string } }>();
@@ -162,6 +162,18 @@ describe("обмін мануалами", () => {
     const file = await guest.client.call(`/api/manuals/${copy.id}/file`);
     expect(await file.text()).toBe("%PDF-1.7\nhello");
     expect((await state(guest.client)).map((m) => m.title)).toEqual(["Мануал.pdf"]);
+  });
+
+  it("працює й без Google: ключ посилання виводиться з PASSWORD_PEPPER, а не з TOKEN_KEY", async () => {
+    const noGoogle = { TOKEN_KEY: "" };
+    const owner = await register(noGoogle);
+    const created = await owner.client.call("/api/manuals/share", { body: { car: "car1" } });
+    expect(created.status).toBe(200);
+    const { url } = await created.json<{ url: string }>();
+    const again = await (await owner.client.call("/api/manuals/share?car=car1")).json<{ url: string }>();
+    expect(again.url).toBe(url);
+    const row = await db.prepare("SELECT token_enc FROM manual_shares WHERE user_id = ?").bind(owner.id).first<{ token_enc: string }>();
+    expect(row?.token_enc).not.toContain(new URL(url).searchParams.get("manuals") ?? "-");
   });
 
   it("без входу список не видно, а вимкнене посилання більше не працює", async () => {

@@ -8,9 +8,8 @@ import type {
   ManualShareResponse,
   SharedManualsResponse,
 } from "../shared/types";
-import { decryptToken, encryptToken, randomToken, sha256 } from "./crypto";
+import { decryptToken, deriveKey, encryptToken, randomToken, sha256 } from "./crypto";
 import { manualFromRow, type ManualRow } from "./data";
-import { tokenKey } from "./google/connection";
 import { limitApi, readJson } from "./guard";
 import { requireUser } from "./session";
 import { ApiError, type AppEnv, type Bindings } from "./types";
@@ -59,6 +58,15 @@ const ownsCar = (env: Bindings, userId: string, carId: string) =>
   env.DB.prepare("SELECT name FROM cars WHERE user_id = ? AND id = ?").bind(userId, carId).first<{ name: string }>();
 
 const shareUrl = (env: Bindings, token: string): string => `${env.APP_URL}/?manuals=${token}`;
+
+/**
+ * Ключ, яким зашифровано токен посилання, щоб власник міг скопіювати його ще раз.
+ * Виводимо з PASSWORD_PEPPER, без якого сайт не працює взагалі: обмін мануалами не має залежати від Google (TOKEN_KEY).
+ */
+const shareKey = (env: Bindings): Promise<string> => {
+  if (!env.PASSWORD_PEPPER) throw new ApiError(503, "configuring");
+  return deriveKey(env.PASSWORD_PEPPER, "manual-share");
+};
 
 export const manuals = new Hono<AppEnv>();
 manuals.use("*", requireUser);
@@ -125,7 +133,7 @@ manuals.get("/share", async (c) => {
   const row = await c.env.DB.prepare("SELECT token_enc FROM manual_shares WHERE user_id = ? AND car_id = ?")
     .bind(user.id, car)
     .first<{ token_enc: string }>();
-  const url = row ? shareUrl(c.env, await decryptToken(row.token_enc, tokenKey(c.env), user.id)) : null;
+  const url = row ? shareUrl(c.env, await decryptToken(row.token_enc, await shareKey(c.env), user.id)) : null;
   return c.json({ url } satisfies ManualShareResponse);
 });
 
@@ -137,13 +145,13 @@ manuals.post("/share", async (c) => {
     .bind(user.id, car)
     .first<{ token_enc: string }>();
   if (existing) {
-    return c.json({ url: shareUrl(c.env, await decryptToken(existing.token_enc, tokenKey(c.env), user.id)) } satisfies ManualShareResponse);
+    return c.json({ url: shareUrl(c.env, await decryptToken(existing.token_enc, await shareKey(c.env), user.id)) } satisfies ManualShareResponse);
   }
   const token = randomToken(24);
   await c.env.DB.prepare(
     "INSERT INTO manual_shares (token_hash, token_enc, user_id, car_id, created_at) VALUES (?, ?, ?, ?, ?)",
   )
-    .bind(await sha256(token), await encryptToken(token, tokenKey(c.env), user.id), user.id, car, now())
+    .bind(await sha256(token), await encryptToken(token, await shareKey(c.env), user.id), user.id, car, now())
     .run();
   return c.json({ url: shareUrl(c.env, token) } satisfies ManualShareResponse);
 });
