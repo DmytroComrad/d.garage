@@ -327,6 +327,12 @@ td,
   font-size: 14px;
 }
 
+/* Кнопка з самою іконкою поруч зі звичайними. */
+.btn-small.btn-square {
+  width: 34px;
+  padding: 0;
+}
+
 .btn-block {
   width: 100%;
 }
@@ -641,6 +647,13 @@ td,
 
 .hero-sub {
   color: var(--ink-2);
+}
+
+/* Профіль машини під назвою: рік, кузов, двигун, номер — тихим рядком. */
+.hero-profile {
+  font-size: 14px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
 }
 
 .hero-actions {
@@ -1789,6 +1802,11 @@ textarea:focus-visible {
 input[type="date"] {
   appearance: none;
   -webkit-appearance: none;
+}
+
+/* VIN і номер: великі літери видно одразу, а зберігаються вони й так великими. */
+.input-caps {
+  text-transform: uppercase;
 }
 
 .input-with-action {

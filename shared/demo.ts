@@ -1,10 +1,11 @@
 import { genId } from "./format";
 import { messages } from "./i18n";
-import type { Car, FuelRecord, ServiceRecord, Wish } from "./types";
+import type { Car, CarProfile, FuelRecord, ServiceRecord, Wish } from "./types";
 
 /** Приклад гаража: цифри з критеріїв приймання, назви знеособлені й перекладені мовою інтерфейсу. */
 export function demoRecords(today: string): {
   car: Car;
+  profile: CarProfile;
   service: ServiceRecord[];
   fuel: FuelRecord[];
   wishes: Wish[];
@@ -50,6 +51,18 @@ export function demoRecords(today: string): {
   });
   return {
     car,
+    // Номер умовний, а VIN не вказуємо: вигаданий міг би збігтися з чиєюсь справжньою машиною.
+    profile: {
+      year: 2008,
+      vin: null,
+      plate: "AA 1234 BB",
+      body: "liftback",
+      engine: 1.8,
+      fuelType: "lpg_petrol",
+      purchaseDate: "2019-04-12",
+      purchasePrice: 185000,
+      about: t.about,
+    },
     service: [
       svc("2026-08-17", 327460, "Ремонт", t.acRepair, t.shop, 4305),
       svc("2026-08-17", 327460, "ТО / расходники", t.timingBelt, t.shop, 8595),

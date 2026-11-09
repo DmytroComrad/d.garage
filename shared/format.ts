@@ -76,6 +76,10 @@ export const fmtLiters = (n: number | null | undefined): string =>
 
 export const fmtLiters1 = (n: number): string => `${numberFormat(1, 1).format(n)}${NBSP}${messages().units.liter}`;
 
+/** Об'єм двигуна: «1,6 л», «1,25 л». */
+export const fmtEngine = (liters: number): string =>
+  `${numberFormat(1, 2).format(liters)}${NBSP}${messages().units.liter}`;
+
 /** Витрата в базі — л/100 км. У милях — л/100 миль. */
 export const consumptionValue = (per100km: number): number => per100km * unitFactor();
 

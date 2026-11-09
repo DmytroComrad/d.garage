@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { RawBackup } from "./backup";
 import type {
+  carProfileSchema,
   carSchema,
   fuelSchema,
   manualSchema,
@@ -15,7 +16,10 @@ import type {
  * Типи записів виводяться зі схем сервера, тому не можуть від них розійтися.
  * Імпорт лише типовий: сама zod у браузер не потрапляє.
  */
-export type Car = z.output<typeof carSchema>;
+/** Рік, VIN, номер, кузов, двигун, пальне й покупка. Порожнє поле — null. */
+export type CarProfile = z.output<typeof carProfileSchema>;
+/** Профіль приходить окремою операцією car.profile; машина з порожнім профілем його не має. */
+export type Car = z.output<typeof carSchema> & { profile?: CarProfile };
 export type ServiceItem = z.output<typeof serviceItemSchema>;
 export type ItemKind = ServiceItem["kind"];
 export type ServiceRecord = z.output<typeof serviceSchema>;

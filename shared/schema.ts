@@ -1,4 +1,14 @@
 import { z } from "zod";
+import {
+  BODY_TYPES,
+  FUEL_TYPES,
+  isCarYear,
+  isVin,
+  latestToday,
+  normalizePlate,
+  normalizeVin,
+  roundEngine,
+} from "./carProfile";
 import { LIMITS } from "./constants";
 import { FUEL_GRADES, type FuelGrade } from "./fuelGrades";
 import { isHttpUrl, isIsoDate } from "./parse";
@@ -13,7 +23,43 @@ const money = z
   .transform((v) => Math.round(v * 100) / 100);
 const odo = z.number().int().min(0).max(LIMITS.maxOdo);
 
+/** car.put несе лише назву: так перейменування, навіть зі старого клієнта, не стирає профіль. */
 export const carSchema = z.object({ id, name: z.string().trim().min(1).max(LIMITS.carNameLength) });
+
+/** Рядок, де порожньо — те саме, що «не вказано». */
+const optionalText = (normalize: (v: string) => string, check: (v: string) => boolean) =>
+  z
+    .string()
+    .max(200)
+    .transform(normalize)
+    .refine((v) => v === "" || check(v))
+    .transform((v) => v || null)
+    .nullable();
+
+/**
+ * Профіль машини: усі поля разом, кожне може бути порожнім.
+ * «Сьогодні» — найпізніше на Землі: у людини на сході вже може бути завтра.
+ */
+export const carProfileSchema = z.object({
+  year: z
+    .number()
+    .int()
+    .refine((y) => isCarYear(y, latestToday()))
+    .nullable(),
+  vin: optionalText(normalizeVin, isVin),
+  plate: optionalText(normalizePlate, (v) => v.length <= LIMITS.plateLength),
+  body: z.enum(BODY_TYPES).nullable(),
+  engine: z.number().min(LIMITS.minEngine).max(LIMITS.maxEngine).transform(roundEngine).nullable(),
+  fuelType: z.enum(FUEL_TYPES).nullable(),
+  purchaseDate: isoDate.refine((d) => d <= latestToday()).nullable(),
+  purchasePrice: money.nullable(),
+  about: z
+    .string()
+    .trim()
+    .max(LIMITS.carAboutLength)
+    .transform((v) => v || null)
+    .nullable(),
+});
 
 export const serviceItemSchema = z.object({
   id,
@@ -96,6 +142,7 @@ export const manualSchema = z.object({
 
 export const opSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("car.put"), data: carSchema }),
+  z.object({ type: z.literal("car.profile"), id, data: carProfileSchema }),
   z.object({ type: z.literal("car.del"), id }),
   z.object({ type: z.literal("service.put"), data: serviceSchema }),
   z.object({ type: z.literal("service.del"), id }),

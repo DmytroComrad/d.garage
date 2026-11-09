@@ -1,8 +1,30 @@
+import {
+  hasProfile,
+  isBodyType,
+  isCarYear,
+  isEmptyProfile,
+  isEngine,
+  isFuelType,
+  isVin,
+  normalizePlate,
+  normalizeVin,
+  roundEngine,
+} from "./carProfile";
 import { BACKUP_APP, LEGACY_BACKUP_APPS, LIMITS, OTHER_CATEGORY } from "./constants";
 import { genId, nameKey } from "./format";
 import { isFuelGrade } from "./fuelGrades";
 import { isHttpUrl, isIsoDate } from "./parse";
-import type { Backup, Car, FuelRecord, GarageData, Reminder, ServiceItem, ServiceRecord, Wish } from "./types";
+import type {
+  Backup,
+  Car,
+  CarProfile,
+  FuelRecord,
+  GarageData,
+  Reminder,
+  ServiceItem,
+  ServiceRecord,
+  Wish,
+} from "./types";
 
 type BackupSource = Pick<GarageData, "cars" | "service" | "fuel" | "reminders" | "wishes">;
 
@@ -77,6 +99,30 @@ const money = (v: unknown): number | null => {
   return n != null && n >= 0 && n <= LIMITS.maxSum ? n : null;
 };
 
+/** Текст або число як текст: таблиця могла перетворити VIN із самих цифр на число. */
+const text = (v: unknown, max: number): string =>
+  typeof v === "number" && Number.isFinite(v) ? String(v) : str(v, max);
+
+/** Профіль машини з бекапу чи таблиці: кожне поле окремо, а негодяще поле просто лишається порожнім. */
+export function readProfile(raw: unknown, today: string): CarProfile {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const year = num(r.year);
+  const vin = normalizeVin(text(r.vin, 200));
+  const engine = num(r.engine);
+  const price = money(r.purchasePrice);
+  return {
+    year: year != null && isCarYear(year, today) ? year : null,
+    vin: isVin(vin) ? vin : null,
+    plate: normalizePlate(text(r.plate, 200)).slice(0, LIMITS.plateLength).trim() || null,
+    body: isBodyType(r.body) ? r.body : null,
+    engine: engine != null && isEngine(engine) ? roundEngine(engine) : null,
+    fuelType: isFuelType(r.fuelType) ? r.fuelType : null,
+    purchaseDate: isIsoDate(r.purchaseDate) && r.purchaseDate <= today ? r.purchaseDate : null,
+    purchasePrice: price == null ? null : kopecks(price) / 100,
+    about: str(r.about, LIMITS.carAboutLength) || null,
+  };
+}
+
 /** Ціна хотілки з бекапу: верхня межа лише тоді, коли вона справді більша за нижню. */
 const priceRange = (rawPrice: unknown, rawMax: unknown): Pick<Wish, "price" | "priceMax"> => {
   const price = rawPrice == null || rawPrice === "" ? null : money(rawPrice);
@@ -102,6 +148,8 @@ const wishKey = (carName: string, title: string): string => [nameKey(carName), n
 
 export type MergeResult = {
   cars: Car[];
+  /** Профілі з бекапу для нових машин і для тих, чий профіль ще порожній. */
+  profiles: { car: string; profile: CarProfile }[];
   service: ServiceRecord[];
   fuel: FuelRecord[];
   reminders: Reminder[];
@@ -115,6 +163,7 @@ export type MergeResult = {
  * машини зіставляються за назвою без регістру, записи отримують нові id,
  * дублікат = збіг типу, дати, назви машини, пробігу і суми в копійках.
  * Межі ті самі, що на сервері: те, що він відхилить, не рахується доданим.
+ * Профіль машини з бекапу заповнює лише порожній: наявний ніколи не перезаписується.
  */
 export function mergeBackup(
   current: BackupSource,
@@ -128,6 +177,8 @@ export function mergeBackup(
 
   // id машини в бекапі → наша машина
   const backupCars = new Map<string, Car>();
+  const profiles: MergeResult["profiles"] = [];
+  const profiled = new Set<string>();
   for (const raw of backup.cars) {
     const r = raw as Record<string, unknown>;
     const name = str(r?.name, LIMITS.carNameLength);
@@ -140,6 +191,11 @@ export function mergeBackup(
       newCars.push(car);
     }
     if (backupId) backupCars.set(backupId, car);
+    const profile = readProfile(r?.profile, today);
+    if (!isEmptyProfile(profile) && !hasProfile(car) && !profiled.has(car.id)) {
+      profiles.push({ car: car.id, profile });
+      profiled.add(car.id);
+    }
   }
 
   const seen = new Set<string>();
@@ -303,5 +359,5 @@ export function mergeBackup(
     added++;
   }
 
-  return { cars: newCars, service, fuel, reminders, wishes, added, skipped };
+  return { cars: newCars, profiles, service, fuel, reminders, wishes, added, skipped };
 }
