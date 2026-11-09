@@ -21,7 +21,7 @@ export const groupOfGrade = (grade: FuelGrade): FuelGroup =>
   FUEL_GROUP_KEYS.find((g) => (FUEL_GROUPS[g] as readonly string[]).includes(grade)) ?? "petrol";
 
 /**
- * Які групи пропонувати машині з відомим типом пального (профіль машини).
+ * Які групи пропонувати машині з відомим типом пального (профіль машини, shared/carProfile.ts).
  * Газ із бензином — обидві групи; невідомий тип — усе, розбите на групи.
  */
 export function groupsForFuelType(fuelType: string | null | undefined): FuelGroup[] {
