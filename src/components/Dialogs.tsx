@@ -398,7 +398,7 @@ function Lightbox({ photos, index }: { photos: Photo[]; index: number }) {
           {i + 1} / {list.length}
         </span>
         <span className="spacer" />
-        {connected && (
+        {connected && photo.driveId && (
           <a className="btn btn-small btn-on-dark" href={driveFileUrl(photo)} target="_blank" rel="noreferrer">
             {t.lightbox.onDrive}
           </a>

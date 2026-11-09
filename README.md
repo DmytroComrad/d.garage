@@ -10,7 +10,8 @@ Live site: https://garage.dvoted.club
 
 - **Frontend:** React 19, Vite, TypeScript and hand-written SVG charts. It installs as a PWA and works offline: records wait in a queue and go to the server once the connection is back.
 - **Backend:** Cloudflare Workers, Hono and D1 (SQLite).
-- **Photos and spreadsheet:** stored on the user's own Google Drive. The database holds only text and links.
+- **Photos:** a private Cloudflare R2 bucket (`garage-media`); the Worker serves them only to their owner. The browser compresses photos and makes thumbnails; HEIC that the browser can't decode is converted to JPEG with the Cloudflare Images binding. Photos uploaded before the move to R2 are copied over from Google Drive by a cron job every 5 minutes, or on first view.
+- **Spreadsheet:** the backup spreadsheet goes to the user's own Google Drive.
 - **Shared code:** `shared/` contains all the calculations. The site and the spreadsheet export use the same code, so their numbers can't drift apart.
 
 ```
@@ -53,7 +54,7 @@ Secrets are set with `wrangler secret put` and never go into the repository.
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in, Drive and Sheets |
 | `TURNSTILE_SECRET` | bot check at registration |
 
-Without Google the site still works, but the gallery and Google Sheets are turned off. Password reset emails need the paid Workers plan: add a `send_email` binding named `EMAIL` and an `EMAIL_FROM` variable.
+Without Google the site still works, but Google Sheets and Google sign-in are turned off. Photos need the R2 bucket from `wrangler.jsonc` (`npx wrangler r2 bucket create garage-media`). Password reset emails need the paid Workers plan: add a `send_email` binding named `EMAIL` and an `EMAIL_FROM` variable.
 
 Google Cloud needs the Drive API, the Sheets API and a "Web application" OAuth client with the redirect URI `https://<domain>/api/google/callback`. The app requests only the `drive.file` scope, so it can see only the files it created itself.
 

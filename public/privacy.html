@@ -30,15 +30,23 @@
       <h2>What the site stores</h2>
       <p>
         Your email, name, password hash (the password itself is never saved), cars, service and fill-up records,
-        reminders, wishlist items and links to photos. All of this lives in a Cloudflare database and is visible only
-        in your account.
+        reminders, wishlist items and photos. Records live in a Cloudflare database, photos in private Cloudflare R2
+        storage. Both are visible only in your account.
+      </p>
+
+      <h2>Photos</h2>
+      <p>
+        Before upload, your browser compresses photos and screenshots, which also strips location and other EXIF data.
+        The storage is private: the site hands a photo only to its owner after checking the account. If a browser can't
+        convert an iPhone HEIC photo itself, the site converts it to JPEG with Cloudflare Images.
       </p>
 
       <h2>Google Drive and Google Sheets</h2>
       <p>
-        If you connect Google Drive, the site creates a “D.Garage” folder on it and puts photos, screenshots and the
-        backup spreadsheet there. The site asks only for <code>drive.file</code> access: it can see and change only the
-        files it created itself. The rest of your Drive is off-limits.
+        If you connect Google Drive, the site creates a “D.Garage” folder on it for the backup spreadsheet. Photos
+        uploaded before November 2026 were stored there too: while Drive is connected, the site copies them into its
+        storage, and the copies on your Drive stay where they are. The site asks only for <code>drive.file</code>
+        access: it can see and change only the files it created itself. The rest of your Drive is off-limits.
       </p>
       <p>
         The access token is stored encrypted and used only to work with those files. Google data isn't shared with
@@ -52,7 +60,8 @@
       <h2>Deletion</h2>
       <p>
         Your profile has a “Delete account” button: it immediately erases the account, cars, records and tokens from
-        the database. Files on your Google Drive aren't deleted.
+        the database, and the photos are removed from the storage within a few minutes. Files on your Google Drive
+        aren't deleted.
       </p>
 
       <h2>Cookies</h2>
@@ -72,14 +81,23 @@
       <h2>Що зберігається на сайті</h2>
       <p>
         Пошта, ім'я, хеш пароля (сам пароль ніде не зберігається), машини, записи про сервіс і заправки, нагадування,
-        хотілки й посилання на фото. Усе це лежить у базі даних Cloudflare і видно лише у твоєму акаунті.
+        хотілки й фото. Записи лежать у базі даних Cloudflare, фото — у приватному сховищі Cloudflare R2. І те, й те
+        видно лише у твоєму акаунті.
+      </p>
+
+      <h2>Фото</h2>
+      <p>
+        Перед завантаженням браузер стискає фото й скриншоти, і при цьому з файлу зникають геомітки та інші EXIF-дані.
+        Сховище приватне: сайт віддає фото лише власникові, перевіривши акаунт. Якщо браузер не може сам перевести
+        фото з iPhone у форматі HEIC, сайт переводить його в JPEG через Cloudflare Images.
       </p>
 
       <h2>Google Диск і Google Таблиці</h2>
       <p>
-        Якщо ти підключаєш Google Диск, сайт створює на ньому папку «D.Garage» і складає туди фото, скриншоти й
-        таблицю-бекап. Сайт запитує лише доступ <code>drive.file</code>: він бачить і може змінювати тільки файли, які
-        створив сам. Інші файли на Диску йому недоступні.
+        Якщо ти підключаєш Google Диск, сайт створює на ньому папку «D.Garage» для таблиці-бекапу. Фото,
+        завантажені до листопада 2026 року, теж лежали там: поки Диск підключено, сайт копіює їх у своє сховище, а
+        копії на твоєму Диску лишаються на місці. Сайт запитує лише доступ <code>drive.file</code>: він бачить і може
+        змінювати тільки файли, які створив сам. Інші файли на Диску йому недоступні.
       </p>
       <p>
         Токен доступу зберігається в зашифрованому вигляді й використовується лише для роботи з цими файлами. Дані
@@ -92,8 +110,8 @@
 
       <h2>Видалення</h2>
       <p>
-        У профілі є кнопка «Видалити акаунт»: вона одразу стирає акаунт, машини, записи й токени з бази. Файли на
-        твоєму Google Диску при цьому не видаляються.
+        У профілі є кнопка «Видалити акаунт»: вона одразу стирає акаунт, машини, записи й токени з бази, а фото
+        зникають зі сховища протягом кількох хвилин. Файли на твоєму Google Диску при цьому не видаляються.
       </p>
 
       <h2>Файли cookie</h2>
@@ -113,14 +131,23 @@
       <h2>Что хранится на сайте</h2>
       <p>
         Почта, имя, хэш пароля (сам пароль нигде не сохраняется), машины, записи о сервисе и заправках, напоминания,
-        хотелки и ссылки на фото. Всё это лежит в базе данных Cloudflare и видно только в твоём аккаунте.
+        хотелки и фото. Записи лежат в базе данных Cloudflare, фото — в приватном хранилище Cloudflare R2. И то, и
+        другое видно только в твоём аккаунте.
+      </p>
+
+      <h2>Фото</h2>
+      <p>
+        Перед загрузкой браузер сжимает фото и скриншоты, и при этом из файла пропадают геометки и другие EXIF-данные.
+        Хранилище приватное: сайт отдаёт фото только владельцу, проверив аккаунт. Если браузер не может сам перевести
+        фото с iPhone в формате HEIC, сайт переводит его в JPEG через Cloudflare Images.
       </p>
 
       <h2>Google Диск и Google Таблицы</h2>
       <p>
-        Если ты подключаешь Google Диск, сайт создаёт на нём папку «D.Garage» и складывает туда фото, скриншоты и
-        таблицу-бэкап. Сайт запрашивает только доступ <code>drive.file</code>: он видит и может менять лишь файлы,
-        которые создал сам. Остальные файлы на Диске ему недоступны.
+        Если ты подключаешь Google Диск, сайт создаёт на нём папку «D.Garage» для таблицы-бэкапа. Фото, загруженные
+        до ноября 2026 года, тоже лежали там: пока Диск подключён, сайт копирует их в своё хранилище, а копии на твоём
+        Диске остаются на месте. Сайт запрашивает только доступ <code>drive.file</code>: он видит и может менять лишь
+        файлы, которые создал сам. Остальные файлы на Диске ему недоступны.
       </p>
       <p>
         Токен доступа хранится в зашифрованном виде и используется только для работы с этими файлами. Данные Google
@@ -133,8 +160,8 @@
 
       <h2>Удаление</h2>
       <p>
-        В профиле есть кнопка «Удалить аккаунт»: она сразу стирает аккаунт, машины, записи и токены из базы. Файлы на
-        твоём Google Диске при этом не удаляются.
+        В профиле есть кнопка «Удалить аккаунт»: она сразу стирает аккаунт, машины, записи и токены из базы, а фото
+        исчезают из хранилища в течение нескольких минут. Файлы на твоём Google Диске при этом не удаляются.
       </p>
 
       <h2>Файлы cookie</h2>

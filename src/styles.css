@@ -1289,6 +1289,20 @@ td,
 }
 
 /* Фото разной формы, без обрезки: это альбом, а не сетка превью */
+/* Підказка над вмістом вкладки: текст і дія поруч. */
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
 .photo-wall {
   columns: 3 220px;
   column-gap: 8px;

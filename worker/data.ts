@@ -26,7 +26,7 @@ type WishRow = {
 };
 export type PhotoRow = {
   id: string; car_id: string; kind: string; record_id: string | null; drive_id: string; name: string;
-  mime: string; size: number; width: number | null; height: number | null; created_at: number;
+  mime: string; size: number; width: number | null; height: number | null; created_at: number; storage: string;
 };
 
 export const photoFromRow = (r: PhotoRow): Photo => ({
@@ -41,6 +41,7 @@ export const photoFromRow = (r: PhotoRow): Photo => ({
   height: r.height,
   createdAt: r.created_at,
   driveId: r.drive_id,
+  storage: r.storage === "r2" || r.storage === "missing" ? r.storage : "drive",
 });
 
 /** Усі дані користувача. Кожен запит обмежено його user_id. */

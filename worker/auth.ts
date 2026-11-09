@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 import { burnPasswordCheck, hashPassword, randomToken, sha256, verifyPassword } from "./crypto";
 import { revokeGoogle } from "./google/connection";
+import { collectGarbage } from "./media";
 import { clientIp, limitAuth, readJson, verifyTurnstile } from "./guard";
 import { SENDER_NAME, mailText, requestLang } from "./messages";
 import { clearSessionCookie, createSession, requireUser } from "./session";
@@ -202,8 +203,9 @@ auth.post("/delete-account", requireUser, async (c) => {
     throw new ApiError(400, "typeEmail");
   }
   await revokeGoogle(c.env, user.id).catch(() => undefined);
-  // Каскад прибирає всі машини, записи, сесії та токени Google.
+  // Каскад прибирає всі машини, записи, сесії та токени Google, а тригер ставить файли фото в чергу прибирання.
   await c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
+  c.executionCtx.waitUntil(collectGarbage(c.env).catch(() => undefined));
   clearSessionCookie(c);
   return c.json({ ok: true });
 });

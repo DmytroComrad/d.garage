@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { photoUrl, uploadPhotos } from "../lib/photos";
-import { googleHref, openDialog, setTab, useCarView, useStore, useT } from "../lib/store";
+import { canShowPhoto, photoStorage, photoUrl, uploadPhotos } from "../lib/photos";
+import { googleHref, openDialog, useCarView, useStore, useT } from "../lib/store";
 import { CameraIcon } from "./icons";
 import { EmptyState } from "./Ledger";
 
@@ -12,28 +12,22 @@ export function GalleryTab({ carId }: { carId: string }) {
   const { photos } = useCarView(carId);
   const input = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"gallery" | "record">("gallery");
-  const list = photos.filter((p) => p.kind === view).sort((a, b) => b.createdAt - a.createdAt);
-  const shots = photos.filter((p) => p.kind === "record").length;
-
-  if (!driveEnabled) {
-    return <EmptyState narrow title={t.gallery.unavailableTitle} text={t.gallery.unavailableText} />;
-  }
-
-  if (!connected) {
-    return (
-      <EmptyState narrow title={t.gallery.connectTitle} text={t.gallery.connectText}>
-        <a className="btn btn-ink" href={googleHref("/api/google/drive/connect")}>
-          {t.gallery.connect}
-        </a>
-        <button type="button" className="link-btn" onClick={() => setTab("data")}>
-          {t.gallery.more}
-        </button>
-      </EmptyState>
-    );
-  }
+  // Старі фото переїжджають з Диска самі, але без підключеного Диска їх не дістати: їх лише рахуємо в підказці.
+  const visible = photos.filter((p) => canShowPhoto(p, connected));
+  const list = visible.filter((p) => p.kind === view).sort((a, b) => b.createdAt - a.createdAt);
+  const shots = visible.filter((p) => p.kind === "record").length;
+  const stuck = connected ? 0 : photos.filter((p) => photoStorage(p) === "drive").length;
 
   return (
     <div>
+      {stuck > 0 && driveEnabled && (
+        <p className="notice">
+          <span>{t.gallery.onDrive(stuck)}</span>
+          <a className="btn btn-quiet btn-small" href={googleHref("/api/google/drive/connect")}>
+            {t.gallery.connect}
+          </a>
+        </p>
+      )}
       <div className="section-head">
         <div className="segmented" role="group" aria-label={t.gallery.viewAria}>
           <button
@@ -77,11 +71,7 @@ export function GalleryTab({ carId }: { carId: string }) {
       {list.length === 0 ? (
         <EmptyState
           title={view === "gallery" ? t.gallery.emptyGalleryTitle : t.gallery.emptyRecordsTitle}
-          text={
-            view === "gallery"
-              ? t.gallery.emptyGalleryText(t.driveFolders.gallery)
-              : t.gallery.emptyRecordsText(t.driveFolders.records)
-          }
+          text={view === "gallery" ? t.gallery.emptyGalleryText : t.gallery.emptyRecordsText}
         />
       ) : (
         <div className="photo-wall">

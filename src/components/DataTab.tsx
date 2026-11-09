@@ -305,7 +305,7 @@ function DriveCard() {
   return (
     <section className="sheet data-sheet">
       <h2 className="sheet-title">{t.data.driveTitle}</h2>
-      <p className="muted">{t.data.driveText(folders.root, folders.gallery, folders.records)}</p>
+      <p className="muted">{t.data.driveText(folders.root)}</p>
       {drive.connected ? (
         <>
           <p>

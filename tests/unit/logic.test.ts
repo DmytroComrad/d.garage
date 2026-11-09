@@ -1,3 +1,4 @@
+import { canShowPhoto, photoStorage } from "../../src/lib/photos";
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { mergeBackup } from "../../shared/backup";
@@ -224,6 +225,7 @@ describe("зміни в пам'яті", () => {
     height: null,
     createdAt: 0,
     driveId: "d",
+    storage: "r2",
     ...over,
   });
 
@@ -305,5 +307,18 @@ describe("файл .xlsx", () => {
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(Buffer.from(buildXlsx(buildSheets(data, "2026-09-15", "en"))) as unknown as ArrayBuffer);
     expect(book.worksheets).toHaveLength(6);
+  });
+});
+
+describe("де лежить фото", () => {
+  it("кеш старої версії без поля storage — це фото ще з Диска", () => {
+    expect(photoStorage({} as Pick<Photo, "storage">)).toBe("drive");
+    expect(photoStorage({ storage: "r2" })).toBe("r2");
+  });
+  it("зі сховища видно завжди, з Диска — лише з підключеним Диском, зниклі — ніколи", () => {
+    expect(canShowPhoto({ storage: "r2" }, false)).toBe(true);
+    expect(canShowPhoto({ storage: "drive" }, true)).toBe(true);
+    expect(canShowPhoto({ storage: "drive" }, false)).toBe(false);
+    expect(canShowPhoto({ storage: "missing" }, true)).toBe(false);
   });
 });

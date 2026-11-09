@@ -4,7 +4,8 @@ import { auth, publicUser } from "./auth";
 import { data, loadGarage } from "./data";
 import { driveStatus, googleConfigured } from "./google/connection";
 import { google } from "./google/oauth";
-import { photos } from "./google/photos";
+import { collectGarbage, migrateBatch } from "./media";
+import { photos } from "./photos";
 import { sheets } from "./google/sheets";
 import { clientIp, limitApi } from "./guard";
 import { errorText, langOf, requestLang } from "./messages";
@@ -12,6 +13,9 @@ import { cleanupExpired, requireUser } from "./session";
 import { ApiError, type AppEnv, type Bindings } from "./types";
 
 const app = new Hono<AppEnv>().basePath("/api");
+
+/** Версія форми відповіді /api/state. Підвищуй, коли в даних з'являються нові поля. */
+const STATE_FORMAT = 2;
 
 app.use("*", async (c, next) => {
   // Захист від CSRF: зміни приймаємо лише зі свого ж походження. Cookie до того ж SameSite=Lax.
@@ -40,8 +44,9 @@ app.get("/config", (c) => {
 
 app.get("/state", requireUser, async (c) => {
   const user = c.get("user");
-  // Дані не змінились, тож не читаємо всі рядки користувача заново. rev оновлюють тригери бази.
-  const etag = `"${user.id}:${user.rev}"`;
+  // Дані не змінились, тож не читаємо всі рядки користувача заново. rev оновлюють тригери бази,
+  // а STATE_FORMAT — коли змінюється сама форма даних (як-от поле storage у фото), щоб кеш клієнтів оновився.
+  const etag = `"${user.id}:${user.rev}:${STATE_FORMAT}"`;
   c.header("ETag", etag);
   // Cloudflare при стисканні робить ETag слабким: браузер повертає його з префіксом W/.
   if (c.req.header("if-none-match")?.replace(/^W\//, "") === etag) return c.body(null, 304);
@@ -90,6 +95,8 @@ export default {
     return app.fetch(request, env, ctx);
   },
   async scheduled(_controller: ScheduledController, env: Bindings, ctx: ExecutionContext) {
-    ctx.waitUntil(cleanupExpired(env.DB));
+    ctx.waitUntil(
+      Promise.allSettled([cleanupExpired(env.DB), collectGarbage(env).then(() => migrateBatch(env))]).then(() => undefined),
+    );
   },
 } satisfies ExportedHandler<Bindings>;

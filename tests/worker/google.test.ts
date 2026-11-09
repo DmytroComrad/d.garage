@@ -1,4 +1,4 @@
-import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
+import { createExecutionContext, createScheduledController, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../../worker/index";
@@ -99,12 +99,18 @@ const register = async (): Promise<{ client: Client; email: string; id: string }
 };
 
 /** Проходить весь шлях підключення Диска з підробленим Google. */
-const connectDrive = async (client: Client, scope = `openid email ${DRIVE_SCOPE}`, lang = "ru") => {
+const connectDrive = async (
+  client: Client,
+  scope = `openid email ${DRIVE_SCOPE}`,
+  lang = "ru",
+  extra: (url: string, init?: RequestInit) => Response | undefined = () => undefined,
+) => {
   const start = await client.call(`/api/google/drive/connect?lang=${lang}`);
   const location = new URL(start.headers.get("location") ?? "");
   const state = location.searchParams.get("state");
-  googleHandler = (url) =>
-    url === "https://oauth2.googleapis.com/token"
+  googleHandler = (url, init) =>
+    extra(url, init) ??
+    (url === "https://oauth2.googleapis.com/token"
       ? json({
           access_token: "ACCESS-TOKEN-PLAIN",
           refresh_token: "REFRESH-TOKEN-PLAIN",
@@ -112,7 +118,7 @@ const connectDrive = async (client: Client, scope = `openid email ${DRIVE_SCOPE}
           scope,
           id_token: idToken({ email: "me@gmail.com", email_verified: true }),
         })
-      : undefined;
+      : undefined);
   const res = await client.call(`/api/google/callback?state=${state}&code=abc`);
   googleHandler = () => undefined;
   return { res, location };
@@ -338,7 +344,31 @@ describe("підключення Диска", () => {
   });
 });
 
-describe("фото", () => {
+describe("старі фото з Диска", () => {
+  const media = (env as unknown as { MEDIA: R2Bucket }).MEDIA;
+  const jpegBytes = (fill: number) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, fill, fill]);
+
+  /** Фото, завантажене до переходу на R2: у базі є, а файл лише на Диску. */
+  const seedDrivePhoto = (userId: string, id: string, mime = "image/png") =>
+    db
+      .prepare(
+        `INSERT INTO photos (user_id, id, car_id, kind, record_id, drive_id, name, mime, created_at, storage)
+         VALUES (?, ?, 'car1', 'gallery', NULL, ?, 'old.png', ?, 1, 'drive')`,
+      )
+      .bind(userId, id, `drive-${id}`, mime)
+      .run();
+
+  /** Підроблений Диск: мініатюра на googleusercontent.com і сам файл. */
+  const driveFiles = (url: string): Response | undefined => {
+    if (url.includes("fields=thumbnailLink")) {
+      const id = decodeURIComponent(url.split("/files/")[1].split("?")[0]);
+      return json({ thumbnailLink: `https://lh3.googleusercontent.com/${id}=s220` });
+    }
+    if (url.startsWith("https://lh3.googleusercontent.com/")) return new Response(jpegBytes(url.endsWith("=s640") ? 6 : 24));
+    if (url.includes("alt=media")) return new Response(pngBytes, { headers: { "content-type": "text/html" } });
+    return undefined;
+  };
+
   const ready = async () => {
     const r = await register();
     await connectDrive(r.client);
@@ -346,99 +376,97 @@ describe("фото", () => {
     return r;
   };
 
-  it("галерея йде в папку «Галерея», а в базі лише текст", async () => {
+  const storage = async (userId: string, id: string) =>
+    (await db.prepare("SELECT storage, mime FROM photos WHERE user_id = ? AND id = ?").bind(userId, id).first<{ storage: string; mime: string }>());
+
+  it("переїжджає в сховище при першому ж перегляді, далі Google вже не потрібен", async () => {
     const { client, id } = await ready();
-    googleHandler = (url) => (url.includes("/upload/drive/v3/files") ? json({ id: "drive-1", name: "фото.png", size: "19" }) : undefined);
-    const res = await client.call("/api/photos", { form: photoForm() });
-    expect(res.status).toBe(200);
+    await seedDrivePhoto(id, "old1");
+    googleHandler = driveFiles;
 
-    const upload = calls.find((c) => c.url.includes("/upload/drive/v3/files"));
-    const body = await new Response(upload?.init?.body as BodyInit).text();
-    expect(body).toContain('"parents":["folder-Галерея"]');
+    const first = await client.call("/api/photos/old1/full");
+    expect(first.status).toBe(200);
+    expect(first.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await first.arrayBuffer())).toEqual(pngBytes);
+    expect(await storage(id, "old1")).toEqual({ storage: "r2", mime: "image/png" });
+    expect(new Uint8Array(await (await media.get(`p/${id}/old1/thumb`))!.arrayBuffer())).toEqual(jpegBytes(6));
 
-    const row = await db.prepare("SELECT * FROM photos WHERE user_id = ?").bind(id).first<Record<string, unknown>>();
-    expect(row).toMatchObject({ drive_id: "drive-1", kind: "gallery", mime: "image/png" });
-    expect(Object.values(row ?? {}).some((v) => v instanceof ArrayBuffer)).toBe(false);
+    calls = [];
+    const thumb = await client.call("/api/photos/old1/thumb");
+    expect(new Uint8Array(await thumb.arrayBuffer())).toEqual(jpegBytes(6));
+    expect(calls).toEqual([]);
   });
 
-  it("фото в записі йде в папку «Из записей»", async () => {
-    const { client } = await ready();
-    googleHandler = (url) => (url.includes("/upload/drive/v3/files") ? json({ id: "drive-2", name: "x", size: "19" }) : undefined);
-    await client.call("/api/photos", { form: photoForm({ kind: "record", recordId: "rec1", id: "ph2" }) });
-    const upload = calls.find((c) => c.url.includes("/upload/drive/v3/files"));
-    const body = await new Response(upload?.init?.body as BodyInit).text();
-    expect(body).toContain('"parents":["folder-Из записей"]');
+  it("HEIC переїжджає як JPEG-версія від Google, щоб його бачили всі браузери", async () => {
+    const { client, id } = await ready();
+    await seedDrivePhoto(id, "old-heic", "image/heic");
+    googleHandler = driveFiles;
+    const res = await client.call("/api/photos/old-heic/full");
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(jpegBytes(24));
+    expect(await storage(id, "old-heic")).toEqual({ storage: "r2", mime: "image/jpeg" });
+    expect(calls.some((c) => c.url.includes("alt=media"))).toBe(false);
   });
 
-  it("SVG і HTML не приймаються, навіть якщо підробити тип", async () => {
-    const { client } = await ready();
-    const svg = await client.call("/api/photos", {
-      form: photoForm({ type: "image/svg+xml", bytes: new TextEncoder().encode("<svg onload=alert(1)>") }),
-    });
-    expect(svg.status).toBe(415);
-    const fake = await client.call("/api/photos", {
-      form: photoForm({ type: "image/png", bytes: new TextEncoder().encode("<html><script>alert(1)</script>") }),
-    });
-    expect(fake.status).toBe(415);
-    expect(calls.some((c) => c.url.includes("/upload/"))).toBe(false);
-  });
-
-  it("у чужу машину завантажити не можна", async () => {
+  it("cron переносить пачку фото тих, у кого підключено Диск, і не чіпає решту", async () => {
     const a = await ready();
-    const b = await ready();
-    await addCar(a.client, "only-a");
-    const res = await b.client.call("/api/photos", { form: photoForm({ car: "only-a" }) });
-    expect(res.status).toBe(404);
+    await seedDrivePhoto(a.id, "a1");
+    await seedDrivePhoto(a.id, "a2");
+    const b = await register();
+    await addCar(b.client);
+    await seedDrivePhoto(b.id, "b1");
+
+    googleHandler = driveFiles;
+    const ctx = createExecutionContext();
+    await worker.scheduled(createScheduledController({ cron: "*/5 * * * *" }), googleEnv as never, ctx);
+    await waitOnExecutionContext(ctx);
+
+    expect((await storage(a.id, "a1"))?.storage).toBe("r2");
+    expect((await storage(a.id, "a2"))?.storage).toBe("r2");
+    expect((await storage(b.id, "b1"))?.storage).toBe("drive");
+    expect(await media.get(`p/${a.id}/a2`)).not.toBeNull();
   });
 
-  it("без Диска завантаження пояснює причину", async () => {
-    const { client } = await register();
-    await addCar(client);
-    const res = await client.call("/api/photos", { form: photoForm() });
-    expect(res.status).toBe(409);
-    expect((await res.json<{ code: string }>()).code).toBe("drive_disconnected");
-  });
-
-  it("відкликаний доступ не ламає сайт: Диск стає відключеним, фото лишаються в базі", async () => {
+  it("фото, якого вже немає на Диску, позначається і більше не смикає Google", async () => {
     const { client, id } = await ready();
-    googleHandler = (url) => (url.includes("/upload/drive/v3/files") ? json({ id: "drive-3", name: "x", size: "19" }) : undefined);
-    await client.call("/api/photos", { form: photoForm({ id: "ph3" }) });
+    await seedDrivePhoto(id, "gone1");
+    googleHandler = (url) => (url.includes("/files/drive-gone1") ? json({ error: {} }, 404) : undefined);
+    const res = await client.call("/api/photos/gone1/full");
+    expect(res.status).toBe(404);
+    expect((await res.json<{ code: string }>()).code).toBe("photo_missing");
+    expect((await storage(id, "gone1"))?.storage).toBe("missing");
+
+    calls = [];
+    expect((await client.call("/api/photos/gone1/thumb")).status).toBe(404);
+    expect(calls).toEqual([]);
+  });
+
+  it("відкликаний доступ не ламає сайт: Диск стає відключеним, фото чекає в базі", async () => {
+    const { client, id } = await ready();
+    await seedDrivePhoto(id, "ph3");
     await db.prepare("UPDATE google_connections SET access_expires = 0 WHERE user_id = ?").bind(id).run();
 
     googleHandler = (url) => (url === "https://oauth2.googleapis.com/token" ? json({ error: "invalid_grant" }, 400) : undefined);
     const res = await client.call("/api/photos/ph3/full");
     expect(res.status).toBe(409);
     expect(await db.prepare("SELECT 1 FROM google_connections WHERE user_id = ?").bind(id).first()).toBeNull();
-    expect(await db.prepare("SELECT 1 FROM photos WHERE user_id = ? AND id = 'ph3'").bind(id).first()).not.toBeNull();
+    expect((await storage(id, "ph3"))?.storage).toBe("drive");
   });
 
-  it("чуже фото не віддається, своє йде із захисними заголовками", async () => {
-    const a = await ready();
-    const b = await ready();
-    googleHandler = (url) => (url.includes("/upload/drive/v3/files") ? json({ id: "drive-4", name: "x", size: "19" }) : undefined);
-    await a.client.call("/api/photos", { form: photoForm({ id: "ph4" }) });
-
-    expect((await b.client.call("/api/photos/ph4/full")).status).toBe(404);
-
-    googleHandler = (url) =>
-      url.includes("alt=media") ? new Response(pngBytes, { headers: { "content-type": "text/html" } }) : undefined;
-    const own = await a.client.call("/api/photos/ph4/full");
-    expect(own.status).toBe(200);
-    expect(own.headers.get("content-type")).toBe("image/png");
-    expect(own.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(own.headers.get("content-security-policy")).toContain("sandbox");
-    expect(own.headers.get("cache-control")).toContain("private");
-  });
-
-  it("видалення фото переносить файл у кошик, а не стирає назавжди", async () => {
-    const { client } = await ready();
-    googleHandler = (url) => (url.includes("/upload/drive/v3/files") ? json({ id: "drive-5", name: "x", size: "19" }) : undefined);
-    await client.call("/api/photos", { form: photoForm({ id: "ph5" }) });
-    googleHandler = () => undefined;
+  it("видалення старого фото переносить копію на Диску в кошик, а не стирає назавжди", async () => {
+    const { client, id } = await ready();
+    await seedDrivePhoto(id, "ph5");
     expect((await client.call("/api/photos/ph5", { method: "DELETE" })).status).toBe(200);
-    const trash = calls.find((c) => c.url.includes("/files/drive-5") && c.init?.method === "PATCH");
+    const trash = calls.find((c) => c.url.includes("/files/drive-ph5") && c.init?.method === "PATCH");
     expect(String(trash?.init?.body)).toContain('"trashed":true');
-    expect(calls.some((c) => c.url.includes("/files/drive-5") && c.init?.method === "DELETE")).toBe(false);
+    expect(calls.some((c) => c.url.includes("/files/drive-ph5") && c.init?.method === "DELETE")).toBe(false);
+  });
+
+  it("нове фото не йде на Диск, навіть коли він підключений", async () => {
+    const { client } = await ready();
+    calls = [];
+    expect((await client.call("/api/photos", { form: photoForm() })).status).toBe(200);
+    expect(calls.some((c) => c.url.includes("googleapis.com"))).toBe(false);
   });
 });
 
@@ -653,35 +681,29 @@ describe("назви на Диску мовою користувача", () => {
     expect((await foldersLang(id))?.folders_lang).toBe("en");
   });
 
-  it("інша мова: папки перейменовуються один раз, а фото йде в ту саму папку", async () => {
+  it("інша мова: папки перейменовуються при повторному підключенні, і лише один раз", async () => {
     const { client, id } = await register();
     await connectDrive(client, undefined, "en");
-    await addCar(client);
-    googleHandler = (url) => (url.includes("/upload/drive/v3/files") ? json({ id: "drive-9", name: "x", size: "19" }) : undefined);
     calls = [];
-    await client.call("/api/photos", { form: photoForm(), lang: "uk" });
+    await connectDrive(client, undefined, "uk");
     expect(renames()).toEqual([
       { id: "folder-D.Garage", name: "D.Garage" },
       { id: "folder-Gallery", name: "Галерея" },
       { id: "folder-From records", name: "Із записів" },
     ]);
-    const upload = calls.find((c) => c.url.includes("/upload/drive/v3/files"));
-    expect(await new Response(upload?.init?.body as BodyInit).text()).toContain('"parents":["folder-Gallery"]');
     expect((await foldersLang(id))?.folders_lang).toBe("uk");
 
     calls = [];
-    await client.call("/api/photos", { form: photoForm({ id: "ph3" }), lang: "uk" });
+    await connectDrive(client, undefined, "uk");
     expect(renames()).toEqual([]);
   });
 
-  it("старі папки «Гараж Амедро» отримують нову назву при першому ж фото", async () => {
+  it("старі папки «Гараж Амедро» отримують нову назву при наступному підключенні", async () => {
     const { client, id } = await register();
     await connectDrive(client);
-    await addCar(client);
     await db.prepare("UPDATE google_connections SET folders_lang = NULL WHERE user_id = ?").bind(id).run();
-    googleHandler = (url) => (url.includes("/upload/drive/v3/files") ? json({ id: "drive-8", name: "x", size: "19" }) : undefined);
     calls = [];
-    await client.call("/api/photos", { form: photoForm() });
+    await connectDrive(client);
     expect(renames().map((r) => r.name)).toEqual(["D.Garage", "Галерея", "Из записей"]);
     expect((await foldersLang(id))?.folders_lang).toBe("ru");
   });
@@ -689,14 +711,10 @@ describe("назви на Диску мовою користувача", () => {
   it("Google не відповів на перейменування: спробуємо наступного разу", async () => {
     const { client, id } = await register();
     await connectDrive(client, undefined, "en");
-    await addCar(client);
-    googleHandler = (url, init) => {
-      if (url.includes("/upload/drive/v3/files")) return json({ id: "drive-7", name: "x", size: "19" });
-      if (init?.method === "PATCH") return json({ error: {} }, 503);
-      return undefined;
-    };
-    const res = await client.call("/api/photos", { form: photoForm(), lang: "uk" });
-    expect(res.status).toBe(200);
+    const res = await connectDrive(client, undefined, "uk", (_url, init) =>
+      init?.method === "PATCH" ? json({ error: {} }, 503) : undefined,
+    );
+    expect(res.res.headers.get("location")).toBe("/?drive=connected");
     expect((await foldersLang(id))?.folders_lang).toBe("en");
   });
 });

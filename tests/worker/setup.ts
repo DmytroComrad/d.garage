@@ -6,6 +6,7 @@ declare module "cloudflare:workers" {
   interface ProvidedEnv {
     TEST_MIGRATIONS: D1Migration[];
     DB: D1Database;
+    MEDIA: R2Bucket;
   }
 }
 
