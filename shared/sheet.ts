@@ -370,20 +370,24 @@ const categoryByLabel = (label: string): string =>
 
 type Row = Record<string, unknown>;
 
-/** Значення стовпця за назвою будь-якою мовою: користувач міг переставити стовпці чи змінити мову. */
-const cell = (row: Row, key: ColKey): unknown => {
-  for (const lang of LANGS) {
-    const value = row[MESSAGES[lang].sheet.col[key]];
-    if (value !== undefined) return value;
-  }
-  return undefined;
-};
-
 /**
  * Назва стовпця без знака гривні. До появи валют суми підписувались «Сумма, ₴»: такі таблиці
  * читаються так само, як нові, де валюта — в окремому стовпці.
  */
 const header = (v: unknown): string => readStr(v).replace(/,\s*₴$/, "");
+
+/**
+ * Значення стовпця за назвою будь-якою мовою: користувач міг переставити стовпці чи змінити мову.
+ * Назву зі словника чистимо так само, як заголовок таблиці (header): «Ціна покупки, ₴» шукаємо як «Ціна покупки».
+ */
+const cell = (row: Row, key: ColKey): unknown => {
+  for (const lang of LANGS) {
+    const value = row[header(MESSAGES[lang].sheet.col[key])];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+};
+
 
 /** Лист → об'єкти за назвами стовпців. */
 const toRows = (values: unknown[][] | undefined): Row[] => {
