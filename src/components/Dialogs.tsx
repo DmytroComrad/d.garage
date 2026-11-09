@@ -24,10 +24,12 @@ import {
 } from "../lib/store";
 import { CarForm } from "./forms/CarForm";
 import { FuelForm } from "./forms/FuelForm";
+import { ManualForm } from "./forms/ManualForm";
 import { ReminderForm } from "./forms/ReminderForm";
 import { ServiceForm } from "./forms/ServiceForm";
 import { WishForm } from "./forms/WishForm";
 import { ChevronIcon, CloseIcon, LampIcon } from "./icons";
+import { ManualShareDialog, SharedManualsDialog } from "./ManualDialogs";
 import { Modal } from "./Modal";
 import { Mono } from "./Mono";
 
@@ -468,6 +470,9 @@ export function Dialogs() {
       {dialog?.type === "copy" && <CopyDialog text={dialog.text} />}
       {dialog?.type === "account" && <AccountDialog />}
       {dialog?.type === "lightbox" && <Lightbox photos={dialog.photos} index={dialog.index} />}
+      {dialog?.type === "manual" && <ManualForm key={dialog.manual?.id ?? "new"} manual={dialog.manual} car={dialog.car} />}
+      {dialog?.type === "manualShare" && <ManualShareDialog car={dialog.car} />}
+      {dialog?.type === "sharedManuals" && <SharedManualsDialog token={dialog.token} />}
       <Toast />
     </>
   );

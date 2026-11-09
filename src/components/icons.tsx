@@ -81,6 +81,35 @@ export const FilterIcon = ({ size }: P) => (
   </Svg>
 );
 
+export const FileIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+    <path d="M14 3v5h5" />
+  </Svg>
+);
+
+export const NoteIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M5 4h14v16H5z" />
+    <path d="M9 9h6M9 13h6M9 17h3" />
+  </Svg>
+);
+
+export const PencilIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M4 20h4L19 9l-4-4L4 16z" />
+    <path d="M13.5 6.5l4 4" />
+  </Svg>
+);
+
+export const ShareIcon = ({ size }: P) => (
+  <Svg size={size}>
+    <path d="M12 3v12" />
+    <path d="M7 8l5-5 5 5" />
+    <path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+  </Svg>
+);
+
 export const TrashIcon = ({ size }: P) => (
   <Svg size={size}>
     <path d="M4 7h16" />

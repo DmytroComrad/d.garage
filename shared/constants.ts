@@ -37,6 +37,7 @@ export const LIMITS = {
   fuel: 10000,
   reminders: 2000,
   wishes: 2000,
+  manuals: 500,
   photos: 5000,
   itemsPerRecord: 60,
   whatLength: 1000,

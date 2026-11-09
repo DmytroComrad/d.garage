@@ -3,7 +3,7 @@ import { LIMITS } from "../shared/constants";
 import { nameKey } from "../shared/format";
 import { retargetOp } from "../shared/ops";
 import { opsRequestSchema } from "../shared/schema";
-import type { Car, FuelRecord, GarageData, Op, OpsResponse, Photo, Reminder, ServiceRecord, Wish } from "../shared/types";
+import type { Car, FuelRecord, GarageData, Manual, Op, OpsResponse, Photo, Reminder, ServiceRecord, Wish } from "../shared/types";
 import { limitApi, readJson } from "./guard";
 import { requireUser } from "./session";
 import { ApiError, type AppEnv, type SessionUser } from "./types";
@@ -24,6 +24,19 @@ type WishRow = {
   id: string; car_id: string; title: string; price: number | null; price_max: number | null; links: string;
   note: string; added: string; done: number; done_date: string | null; record_id: string | null;
 };
+export type ManualRow = {
+  id: string; car_id: string; title: string; url: string | null; note: string; added: string;
+  file_name: string | null; file_mime: string | null; file_size: number | null;
+};
+export const manualFromRow = (r: ManualRow): Manual => ({
+  id: r.id,
+  car: r.car_id,
+  title: r.title,
+  url: r.url,
+  note: r.note,
+  added: r.added,
+  file: r.file_name ? { name: r.file_name, mime: r.file_mime ?? "application/octet-stream", size: r.file_size ?? 0 } : null,
+});
 export type PhotoRow = {
   id: string; car_id: string; kind: string; record_id: string | null; drive_id: string; name: string;
   mime: string; size: number; width: number | null; height: number | null; created_at: number; storage: string;
@@ -46,12 +59,13 @@ export const photoFromRow = (r: PhotoRow): Photo => ({
 
 /** Усі дані користувача. Кожен запит обмежено його user_id. */
 export async function loadGarage(db: D1Database, userId: string, demo: number): Promise<GarageData> {
-  const [cars, service, fuel, reminders, wishes, photos] = await db.batch([
+  const [cars, service, fuel, reminders, wishes, manuals, photos] = await db.batch([
     db.prepare("SELECT id, name FROM cars WHERE user_id = ? ORDER BY position, id").bind(userId),
     db.prepare("SELECT * FROM service_records WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM fuel_records WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM reminders WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM wishes WHERE user_id = ?").bind(userId),
+    db.prepare("SELECT * FROM manuals WHERE user_id = ?").bind(userId),
     db.prepare("SELECT * FROM photos WHERE user_id = ?").bind(userId),
   ]);
   return {
@@ -112,6 +126,7 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
         recordId: r.record_id,
       }),
     ),
+    manuals: (manuals.results as ManualRow[]).map(manualFromRow),
     photos: (photos.results as PhotoRow[]).map(photoFromRow),
   };
 }
@@ -231,6 +246,23 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
     }
     case "wish.del":
       return [db.prepare("DELETE FROM wishes WHERE user_id = ? AND id = ?").bind(userId, op.id)];
+    case "manual.put": {
+      const m = op.data;
+      // Посилання в мануала з файлом не буває: файл і є матеріал. Сам файл через ops не змінюється.
+      return [
+        db
+          .prepare(
+            `INSERT INTO manuals (user_id, id, car_id, title, url, note, added)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (user_id, id) DO UPDATE SET
+               car_id = excluded.car_id, title = excluded.title, note = excluded.note, added = excluded.added,
+               url = CASE WHEN manuals.file_name IS NULL THEN excluded.url ELSE NULL END`,
+          )
+          .bind(userId, m.id, m.car, m.title, m.url, m.note, m.added),
+      ];
+    }
+    case "manual.del":
+      return [db.prepare("DELETE FROM manuals WHERE user_id = ? AND id = ?").bind(userId, op.id)];
     case "demo.set":
       return [db.prepare("UPDATE users SET demo = ? WHERE id = ?").bind(op.value ? 1 : 0, userId)];
     case "all.del":
@@ -243,13 +275,14 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
 
 /** Межі на користувача: база має рости повільно, навіть якщо хтось напише скрипт. */
 function checkQuota(user: SessionUser, ops: Op[]): void {
-  const adds = { car: 0, service: 0, fuel: 0, reminder: 0, wish: 0 };
+  const adds = { car: 0, service: 0, fuel: 0, reminder: 0, wish: 0, manual: 0 };
   for (const op of ops) {
     if (op.type === "car.put") adds.car++;
     if (op.type === "service.put") adds.service++;
     if (op.type === "fuel.put") adds.fuel++;
     if (op.type === "reminder.put") adds.reminder++;
     if (op.type === "wish.put") adds.wish++;
+    if (op.type === "manual.put") adds.manual++;
   }
   // Запас на один запит: оновлення наявних записів теж рахуються як додавання.
   if (
@@ -257,7 +290,8 @@ function checkQuota(user: SessionUser, ops: Op[]): void {
     (adds.service && user.service_count + adds.service > LIMITS.service + LIMITS.opsPerRequest) ||
     (adds.fuel && user.fuel_count + adds.fuel > LIMITS.fuel + LIMITS.opsPerRequest) ||
     (adds.reminder && user.reminders_count + adds.reminder > LIMITS.reminders + LIMITS.opsPerRequest) ||
-    (adds.wish && user.wishes_count + adds.wish > LIMITS.wishes + LIMITS.opsPerRequest)
+    (adds.wish && user.wishes_count + adds.wish > LIMITS.wishes + LIMITS.opsPerRequest) ||
+    (adds.manual && user.manuals_count + adds.manual > LIMITS.manuals + LIMITS.opsPerRequest)
   ) {
     throw new ApiError(413, "quota");
   }

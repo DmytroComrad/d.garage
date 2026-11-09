@@ -3,6 +3,7 @@ import type { RawBackup } from "./backup";
 import type {
   carSchema,
   fuelSchema,
+  manualSchema,
   opSchema,
   reminderSchema,
   serviceItemSchema,
@@ -22,6 +23,9 @@ export type FuelRecord = z.output<typeof fuelSchema>;
 export type Reminder = z.output<typeof reminderSchema>;
 /** Хотілка: план на машину з приблизною ціною. Виконана може посилатись на запис обслуговування. */
 export type Wish = z.output<typeof wishSchema>;
+/** Файл мануала лежить у сховищі; тут лише те, що про нього знає сервер. */
+export type ManualFile = { name: string; mime: string; size: number };
+export type Manual = z.output<typeof manualSchema> & { file: ManualFile | null };
 export type Op = z.output<typeof opSchema>;
 
 /** Рівні сповіщення: 0 — ще рано, 1 — за 1000 км / 30 днів, 2 — за 500 км / 7 днів, 3 — термін настав. */
@@ -56,6 +60,7 @@ export type GarageData = {
   fuel: FuelRecord[];
   reminders: Reminder[];
   wishes: Wish[];
+  manuals: Manual[];
   photos: Photo[];
   demo: boolean;
 };
@@ -98,6 +103,10 @@ export type AppConfig = {
 export type StateResponse = { user: User; data: GarageData; drive: DriveStatus };
 export type AuthResponse = { user: User };
 export type PhotoResponse = { photo: Photo };
+export type ManualResponse = { manual: Manual };
+export type ManualShareResponse = { url: string | null };
+export type SharedManualsResponse = { carName: string; own: boolean; items: Manual[] };
+export type ImportManualsResponse = { manuals: Manual[] };
 export type SheetExportResponse = { url: string; exportedAt: number };
 export type SheetImportResponse = { backup: RawBackup };
 

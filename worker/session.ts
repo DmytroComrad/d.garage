@@ -36,7 +36,7 @@ export async function loadUser(c: Context<AppEnv>): Promise<SessionUser | null> 
   const hash = await sha256(token);
   const row = await c.env.DB.prepare(
     `SELECT u.id, u.email, u.name, u.password_hash, u.google_sub, u.demo, u.rev,
-            u.cars_count, u.service_count, u.fuel_count, u.reminders_count, u.wishes_count, u.photos_count, s.expires_at
+            u.cars_count, u.service_count, u.fuel_count, u.reminders_count, u.wishes_count, u.manuals_count, u.photos_count, s.expires_at
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ?`,
   )

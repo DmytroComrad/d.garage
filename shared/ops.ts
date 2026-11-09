@@ -14,6 +14,7 @@ export const emptyData = (): GarageData => ({
   fuel: [],
   reminders: [],
   wishes: [],
+  manuals: [],
   photos: [],
   demo: false,
 });
@@ -47,6 +48,7 @@ export function applyOp(data: GarageData, op: Op): GarageData {
         fuel: data.fuel.filter((r) => r.car !== op.id),
         reminders: data.reminders.filter((r) => r.car !== op.id),
         wishes: data.wishes.filter((w) => w.car !== op.id),
+        manuals: data.manuals.filter((m) => m.car !== op.id),
         photos: data.photos.filter((p) => p.car !== op.id),
       };
     case "service.put":
@@ -74,6 +76,14 @@ export function applyOp(data: GarageData, op: Op): GarageData {
       return { ...data, wishes: upsert(data.wishes, op.data) };
     case "wish.del":
       return { ...data, wishes: data.wishes.filter((w) => w.id !== op.id) };
+    case "manual.put": {
+      // Файл належить мануалу назавжди: зміна назви чи нотатки його не чіпає.
+      const known = data.manuals.find((m) => m.id === op.data.id);
+      const file = known?.file ?? null;
+      return { ...data, manuals: upsert(data.manuals, { ...op.data, url: file ? null : op.data.url, file }) };
+    }
+    case "manual.del":
+      return { ...data, manuals: data.manuals.filter((m) => m.id !== op.id) };
     case "demo.set":
       return { ...data, demo: op.value };
     case "all.del":
@@ -96,9 +106,10 @@ export function retargetOp(op: Op, aliases: ReadonlyMap<string, string>): Op {
       const car = aliases.get(op.data.car);
       return car ? { ...op, data: { ...op.data, car } } : op;
     }
-    case "wish.put": {
+    case "wish.put":
+    case "manual.put": {
       const car = aliases.get(op.data.car);
-      return car ? { ...op, data: { ...op.data, car } } : op;
+      return car ? ({ ...op, data: { ...op.data, car } } as Op) : op;
     }
     case "car.del": {
       const id = aliases.get(op.id);

@@ -12,6 +12,7 @@ Live site: https://garage.dvoted.club
 - **Backend:** Cloudflare Workers, Hono and D1 (SQLite).
 - **Photos:** a private Cloudflare R2 bucket (`garage-media`); the Worker serves them only to their owner. The browser compresses photos and makes thumbnails; HEIC that the browser can't decode is converted to JPEG with the Cloudflare Images binding. Photos uploaded before the move to R2 are copied over from Google Drive by a cron job every 5 minutes, or on first view.
 - **Spreadsheet:** the backup spreadsheet goes to the user's own Google Drive.
+- **Manuals:** links, notes and files of any type per car, files in the same R2 bucket. PDFs and images open inline, anything else is served as an `application/octet-stream` download. A per-car share link lets signed-in users copy selected materials into their own account.
 - **Shared code:** `shared/` contains all the calculations. The site and the spreadsheet export use the same code, so their numbers can't drift apart.
 
 ```

@@ -17,6 +17,7 @@ import {
 import { DataTab } from "./DataTab";
 import { FuelTab } from "./FuelTab";
 import { GalleryTab } from "./GalleryTab";
+import { ManualsTab } from "./ManualsTab";
 import { LampIcon, PersonIcon } from "./icons";
 import { LangMenu } from "./LangMenu";
 import { Mono } from "./Mono";
@@ -238,6 +239,7 @@ function Tabs({ carId }: { carId: string }) {
     { id: "fuel", label: t.tabs.fuel },
     { id: "reminders", label: t.tabs.reminders, badge: urgentReminders.length },
     { id: "wishes", label: t.tabs.wishes },
+    { id: "manuals", label: t.tabs.manuals },
     { id: "gallery", label: t.tabs.gallery },
     { id: "stats", label: t.tabs.stats },
     { id: "data", label: t.tabs.data },
@@ -339,6 +341,7 @@ export function Garage() {
               {tab === "fuel" && <FuelTab carId={carId} />}
               {tab === "reminders" && <RemindersTab carId={carId} />}
               {tab === "wishes" && <WishesTab carId={carId} />}
+              {tab === "manuals" && <ManualsTab carId={carId} />}
               {tab === "gallery" && <GalleryTab carId={carId} />}
               {tab === "stats" && <StatsTab carId={carId} />}
               {tab === "data" && <DataTab />}

@@ -11,6 +11,7 @@ import type {
   DriveStatus,
   FuelRecord,
   GarageData,
+  Manual,
   Op,
   OpsResponse,
   Photo,
@@ -25,7 +26,7 @@ import { createCache } from "./cache";
 import { drainQueue, reconcileQueue } from "./sync";
 import { carView, type CarView } from "./view";
 
-export type Tab = "service" | "fuel" | "reminders" | "wishes" | "gallery" | "stats" | "data";
+export type Tab = "service" | "fuel" | "reminders" | "wishes" | "manuals" | "gallery" | "stats" | "data";
 export type Theme = "auto" | "light" | "dark";
 
 /** Що підставити в нову сервісну форму: так хотілка стає записом витрат. */
@@ -42,6 +43,9 @@ export type Dialog =
   | { type: "account" }
   | { type: "copy"; text: string }
   | { type: "lightbox"; photos: Photo[]; index: number }
+  | { type: "manual"; manual?: Manual; car?: string }
+  | { type: "manualShare"; car: string }
+  | { type: "sharedManuals"; token: string }
   | null;
 
 export type AppState = {
@@ -67,7 +71,7 @@ export type AppState = {
 };
 
 const UI_KEY = "garage-ui";
-const TABS: Tab[] = ["service", "fuel", "reminders", "wishes", "gallery", "stats", "data"];
+const TABS: Tab[] = ["service", "fuel", "reminders", "wishes", "manuals", "gallery", "stats", "data"];
 
 const noDrive: DriveStatus = { connected: false, email: null, sheetUrl: null, sheetExportedAt: null };
 
@@ -387,6 +391,24 @@ const REDIRECT_MESSAGES: Record<string, keyof Messages["redirect"]> = {
   "google=claimed": "googleClaimed",
 };
 
+const SHARED_MANUALS_KEY = "garage-shared-manuals";
+let pendingSharedManuals: string | null = null;
+
+/** Якщо людина прийшла за посиланням на мануали, після входу показуємо їх. Повертає, чи відкрито вікно. */
+const openSharedManuals = (): boolean => {
+  let token = pendingSharedManuals;
+  try {
+    token = sessionStorage.getItem(SHARED_MANUALS_KEY) ?? token;
+    sessionStorage.removeItem(SHARED_MANUALS_KEY);
+  } catch {
+    // Без sessionStorage лишається змінна в пам'яті.
+  }
+  pendingSharedManuals = null;
+  if (!token || !state.user) return false;
+  openDialog({ type: "sharedManuals", token });
+  return true;
+};
+
 const consumeUrlParams = (): void => {
   const url = new URL(location.href);
   let message: string | undefined;
@@ -398,6 +420,16 @@ const consumeUrlParams = (): void => {
       url.searchParams.delete(key);
       if (key === "drive") setState({ tab: "data" });
     }
+  }
+  // Чужі мануали за посиланням: запам'ятовуємо до входу, якщо людина ще не увійшла.
+  const shared = url.searchParams.get("manuals");
+  if (shared) {
+    try {
+      sessionStorage.setItem(SHARED_MANUALS_KEY, shared);
+    } catch {
+      pendingSharedManuals = shared;
+    }
+    url.searchParams.delete("manuals");
   }
   const reset = url.searchParams.get("reset");
   if (reset) {
@@ -430,7 +462,7 @@ export async function boot(): Promise<void> {
   if (state.phase === "loading") setState({ phase: state.user ? "ready" : "anon" });
   if (state.user) {
     await flush();
-    if (state.active) showDueReminders(state.active);
+    if (!openSharedManuals() && state.active) showDueReminders(state.active);
   }
 
   window.addEventListener("online", () => void syncNow());
@@ -454,7 +486,7 @@ export async function afterAuth(): Promise<void> {
   await refresh({ force: true });
   if (state.phase !== "ready") throw new NetworkError(messages().common.noServer);
   await flush();
-  if (state.active) showDueReminders(state.active);
+  if (!openSharedManuals() && state.active) showDueReminders(state.active);
 }
 
 /**
@@ -490,6 +522,13 @@ export const setDrive = (drive: DriveStatus): void => {
 
 export const addPhoto = (photo: Photo): void => {
   setState({ data: { ...state.data, photos: [...state.data.photos, photo] } });
+  saveCache();
+};
+
+/** Мануали, які створив сервер: завантажений файл чи копії з чужого посилання. */
+export const addManuals = (manuals: Manual[]): void => {
+  const ids = new Set(manuals.map((m) => m.id));
+  setState({ data: { ...state.data, manuals: [...state.data.manuals.filter((m) => !ids.has(m.id)), ...manuals] } });
   saveCache();
 };
 

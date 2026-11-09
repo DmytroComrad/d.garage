@@ -5,6 +5,7 @@ import { data, loadGarage } from "./data";
 import { driveStatus, googleConfigured } from "./google/connection";
 import { google } from "./google/oauth";
 import { collectGarbage, migrateBatch } from "./media";
+import { manuals } from "./manuals";
 import { photos } from "./photos";
 import { sheets } from "./google/sheets";
 import { clientIp, limitApi } from "./guard";
@@ -63,6 +64,7 @@ app.route("/", data);
 app.route("/google/sheet", sheets);
 app.route("/google", google);
 app.route("/photos", photos);
+app.route("/manuals", manuals);
 
 app.notFound((c) => c.json({ error: errorText(requestLang(c), "notFound") }, 404));
 
