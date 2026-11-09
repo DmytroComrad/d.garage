@@ -1,8 +1,14 @@
-import type { FuelRecord, ItemKind, ServiceRecord } from "./types";
+import type { FuelRecord, ItemKind, ServiceRecord, Wish } from "./types";
 
 /** Сума грошей у копійках, щоб не накопичувати похибку плаваючої коми. */
 export const sumMoney = (values: number[]): number =>
   values.reduce((acc, v) => acc + Math.round(v * 100), 0) / 100;
+
+/** Скільки коштують хотілки разом: від суми нижніх меж до суми верхніх. Без ціни не рахуються. */
+export const wishesTotal = (wishes: Pick<Wish, "price" | "priceMax">[]): { min: number; max: number } => ({
+  min: sumMoney(wishes.map((w) => w.price ?? 0)),
+  max: sumMoney(wishes.map((w) => w.priceMax ?? w.price ?? 0)),
+});
 
 /** Літри до трьох знаків: рахуємо в мілілітрах з тієї ж причини. */
 const sumLiters = (values: number[]): number =>

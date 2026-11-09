@@ -109,3 +109,33 @@ describe("злиття", () => {
     expect(res.skipped).toBe(2);
   });
 });
+
+describe("хотілки з діапазоном ціни", () => {
+  const raw = (wishes: unknown[]) => ({ cars: [{ id: "c", name: "Тест" }], wishes });
+  const base = { car: "c", links: [], note: "", added: "2026-09-01", done: false, doneDate: null, recordId: null };
+  const ids = () => {
+    let n = 0;
+    return () => `id${++n}`;
+  };
+
+  it("діапазон переживає бекап, а зламана верхня межа відкидається", () => {
+    const merged = mergeBackup(
+      emptyData(),
+      raw([
+        { ...base, title: "Шини", price: 4000, priceMax: 6000 },
+        { ...base, title: "Килимки", price: 1000, priceMax: 800 },
+        { ...base, title: "Без ціни", price: null, priceMax: 500 },
+        { ...base, title: "Старий бекап", price: 300 },
+      ]),
+      ids(),
+    );
+    expect(merged.wishes.map((w) => [w.title, w.price, w.priceMax])).toEqual([
+      ["Шини", 4000, 6000],
+      ["Килимки", 1000, null],
+      ["Без ціни", null, null],
+      ["Старий бекап", 300, null],
+    ]);
+    const back = JSON.parse(backupToText(buildBackup({ ...emptyData(), cars: merged.cars, wishes: merged.wishes })));
+    expect(back.wishes[0]).toMatchObject({ price: 4000, priceMax: 6000 });
+  });
+});

@@ -66,6 +66,7 @@ const wish = (over: Record<string, unknown> = {}) => ({
     car: "car1",
     title: "Зимова гума",
     price: 14000,
+    priceMax: null,
     links: ["https://rozetka.com.ua/tires"],
     note: "До заморозків",
     added: "2026-09-01",
@@ -105,6 +106,26 @@ describe("хотілки", () => {
     const client = await register();
     const res = await client.call("/api/ops", { body: { ops: [car, wish({ links: ["javascript:alert(1)"] })] } });
     expect(res.status).toBe(400);
+  });
+
+  it("ціна «від-до» зберігається, а неможливий діапазон сервер не приймає", async () => {
+    const client = await register();
+    const ok = await client.call("/api/ops", { body: { ops: [car, wish({ price: 4000, priceMax: 6000 })] } });
+    expect(ok.status).toBe(200);
+    expect((await state(client)).data.wishes[0]).toMatchObject({ price: 4000, priceMax: 6000 });
+
+    for (const bad of [{ price: 6000, priceMax: 4000 }, { price: 5000, priceMax: 5000 }, { price: null, priceMax: 5000 }]) {
+      const res = await client.call("/api/ops", { body: { ops: [wish({ id: "w2", ...bad })] } });
+      expect(res.status, JSON.stringify(bad)).toBe(400);
+    }
+  });
+
+  it("старий клієнт без поля priceMax зберігає одну ціну", async () => {
+    const client = await register();
+    const { priceMax: _, ...old } = wish().data;
+    const res = await client.call("/api/ops", { body: { ops: [car, { type: "wish.put", data: old }] } });
+    expect(res.status).toBe(200);
+    expect((await state(client)).data.wishes[0]).toMatchObject({ price: 14000, priceMax: null });
   });
 
   it("машина забирає свої хотілки з собою", async () => {

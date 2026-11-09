@@ -60,18 +60,23 @@ export const reminderSchema = z
   })
   .refine((r) => r.dueOdo != null || r.dueDate != null);
 
-export const wishSchema = z.object({
-  id,
-  car: id,
-  title: z.string().trim().min(1).max(LIMITS.titleLength),
-  price: money.nullable(),
-  links: z.array(z.string().trim().refine(isHttpUrl)).max(LIMITS.linksPerWish).default([]),
-  note: z.string().trim().max(LIMITS.noteLength),
-  added: isoDate,
-  done: z.boolean(),
-  doneDate: isoDate.nullable(),
-  recordId: id.nullable(),
-});
+/** Ціна — одне число або діапазон: тоді price — нижня межа, priceMax — верхня, і вона більша. */
+export const wishSchema = z
+  .object({
+    id,
+    car: id,
+    title: z.string().trim().min(1).max(LIMITS.titleLength),
+    price: money.nullable(),
+    // Старі клієнти поля не знають: для них це одна ціна.
+    priceMax: money.nullable().default(null),
+    links: z.array(z.string().trim().refine(isHttpUrl)).max(LIMITS.linksPerWish).default([]),
+    note: z.string().trim().max(LIMITS.noteLength),
+    added: isoDate,
+    done: z.boolean(),
+    doneDate: isoDate.nullable(),
+    recordId: id.nullable(),
+  })
+  .refine((w) => w.priceMax == null || (w.price != null && w.priceMax > w.price));
 
 export const opSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("car.put"), data: carSchema }),

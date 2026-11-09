@@ -39,6 +39,7 @@ export function demoRecords(today: string): {
     car: car.id,
     title,
     price,
+    priceMax: null,
     links: [],
     note,
     added: today,

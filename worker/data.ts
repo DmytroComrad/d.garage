@@ -21,8 +21,8 @@ type ReminderRow = {
   done: number; done_date: string | null; notified: Reminder["notified"]; record_id: string | null;
 };
 type WishRow = {
-  id: string; car_id: string; title: string; price: number | null; links: string; note: string; added: string;
-  done: number; done_date: string | null; record_id: string | null;
+  id: string; car_id: string; title: string; price: number | null; price_max: number | null; links: string;
+  note: string; added: string; done: number; done_date: string | null; record_id: string | null;
 };
 export type PhotoRow = {
   id: string; car_id: string; kind: string; record_id: string | null; drive_id: string; name: string;
@@ -102,6 +102,7 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
         car: r.car_id,
         title: r.title,
         price: r.price,
+        priceMax: r.price_max,
         links: JSON.parse(r.links),
         note: r.note,
         added: r.added,
@@ -203,10 +204,11 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
       return [
         db
           .prepare(
-            `INSERT INTO wishes (user_id, id, car_id, title, price, links, note, added, done, done_date, record_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO wishes (user_id, id, car_id, title, price, price_max, links, note, added, done, done_date, record_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (user_id, id) DO UPDATE SET
-               car_id = excluded.car_id, title = excluded.title, price = excluded.price, links = excluded.links,
+               car_id = excluded.car_id, title = excluded.title, price = excluded.price, price_max = excluded.price_max,
+               links = excluded.links,
                note = excluded.note, added = excluded.added, done = excluded.done, done_date = excluded.done_date,
                record_id = excluded.record_id`,
           )
@@ -216,6 +218,7 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
             w.car,
             w.title,
             w.price,
+            w.priceMax,
             JSON.stringify(w.links),
             w.note,
             w.added,

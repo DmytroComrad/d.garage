@@ -76,6 +76,13 @@ const money = (v: unknown): number | null => {
   return n != null && n >= 0 && n <= LIMITS.maxSum ? n : null;
 };
 
+/** Ціна хотілки з бекапу: верхня межа лише тоді, коли вона справді більша за нижню. */
+const priceRange = (rawPrice: unknown, rawMax: unknown): Pick<Wish, "price" | "priceMax"> => {
+  const price = rawPrice == null || rawPrice === "" ? null : money(rawPrice);
+  const max = rawMax == null || rawMax === "" ? null : money(rawMax);
+  return { price, priceMax: price != null && max != null && max > price ? max : null };
+};
+
 /** Пробіг у межах сервера: порожньо → null, сміття → undefined. */
 const odometer = (v: unknown): number | null | undefined => {
   if (v == null || v === "") return null;
@@ -280,7 +287,7 @@ export function mergeBackup(
       id: makeId(),
       car: car.id,
       title,
-      price: r.price == null || r.price === "" ? null : money(r.price),
+      ...priceRange(r.price, r.priceMax),
       links: (Array.isArray(r.links) ? r.links : [])
         .map((l) => (typeof l === "string" ? l.trim() : ""))
         .filter(isHttpUrl)
