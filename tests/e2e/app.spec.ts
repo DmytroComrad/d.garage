@@ -486,6 +486,14 @@ test("все фото можно скачать одним архивом, ра�
   await expect(page.getByText("Фото в архиве: 1")).toBeVisible();
 });
 
+test("текст в сводке не слипается: сжатые пробелы только у чисел", async ({ page }) => {
+  await register(page);
+  await loadDemo(page);
+  const text = page.locator(".kv-text").first();
+  await expect(text).toBeVisible();
+  expect(await text.evaluate((el) => getComputedStyle(el).wordSpacing)).toBe("0px");
+});
+
 test("после ошибки регистрации проверка на робота выдаётся заново", async ({ page }) => {
   // Заглушка Turnstile: настоящий виджет не пропускает автоматический браузер.
   await page.addInitScript(() => {
