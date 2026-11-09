@@ -870,11 +870,15 @@ td,
   color: var(--ink-2);
 }
 
+/*
+ * Числа й одиниці склеєні нерозривними пробілами, тож рядок може перенестись лише перед другою одиницею:
+ * «328 030 км» / «(203 828 миль)», коли в профілі ввімкнено обидві.
+ */
 .kv dd {
+  min-width: 0;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   text-align: right;
-  white-space: nowrap;
 }
 
 .kv-big dd {

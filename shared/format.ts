@@ -1,5 +1,5 @@
 import { LOCALES, messages } from "./i18n";
-import { fromKm, prefs, unitFactor, type DateFormat, type Lang } from "./prefs";
+import { fromKm, otherUnit, prefs, unitFactor, type DateFormat, type Lang } from "./prefs";
 
 /*
  * Форматування для інтерфейсу: мова, одиниці й формат дати беруться з поточних налаштувань.
@@ -51,13 +51,20 @@ export const hostOf = (url: string): string => {
 };
 
 /** Ціле число з одиницею відстані: «12 000 км», «5,000 mi», «3 милі». Число вже в потрібних одиницях. */
-export const fmtUnits = (n: number): string => {
-  const { unit } = prefs();
-  return `${fmtNum(n)}${NBSP}${messages().units.dist[unit](n)}`;
-};
+export const fmtUnits = (n: number, unit = prefs().unit): string => `${fmtNum(n)}${NBSP}${messages().units.dist[unit](n)}`;
 
-/** Відстань із бази (км) у вибраних одиницях. */
-export const fmtDist = (km: number | null | undefined): string => (ok(km) ? fmtUnits(fromKm(km)) : "—");
+/**
+ * Відстань із бази (км) у вибраних одиницях. Якщо в профілі ввімкнено обидві одиниці,
+ * друга йде в дужках: «12 000 км (7 456 mi)» — для машин, привезених зі США, і їхніх старих документів.
+ */
+export const fmtDist = (km: number | null | undefined): string => {
+  if (!ok(km)) return "—";
+  const { unit, dual } = prefs();
+  const main = fmtUnits(fromKm(km, unit), unit);
+  if (!dual) return main;
+  const other = otherUnit(unit);
+  return `${main} (${fmtUnits(fromKm(km, other), other)})`;
+};
 
 /** Позначка одиниці для підписів полів: «км», «mi», «мили». */
 export const unitLabel = (): string => messages().units.label[prefs().unit];

@@ -59,10 +59,12 @@ describe("словники", () => {
   });
 
   it("за замовчуванням англійська, кілометри й дд.мм.рррр", () => {
-    expect(DEFAULT_PREFS).toEqual({ lang: "en", unit: "km", dateFormat: "dmy" });
+    expect(DEFAULT_PREFS).toEqual({ lang: "en", unit: "km", dateFormat: "dmy", dual: false });
     expect(readPrefs(null)).toEqual(DEFAULT_PREFS);
     expect(readPrefs({ lang: "de", unit: "parsecs", dateFormat: 5 })).toEqual(DEFAULT_PREFS);
-    expect(readPrefs({ lang: "uk", unit: "mi", dateFormat: "ymd" })).toEqual({ lang: "uk", unit: "mi", dateFormat: "ymd" });
+    expect(readPrefs({ lang: "uk", unit: "mi", dateFormat: "ymd" })).toEqual({ lang: "uk", unit: "mi", dateFormat: "ymd", dual: false });
+    expect(readPrefs({ dual: "yes" }).dual).toBe(false);
+    expect(readPrefs({ dual: true }).dual).toBe(true);
   });
 
   it("категорії зберігаються як були, а показуються перекладом", () => {
@@ -96,6 +98,18 @@ describe("одиниці відстані", () => {
     // 7,84 л/100 км = 12,6 л/100 миль; 47,53 ₴/км = 76,49 ₴/милю.
     expect(nb(fmtConsumption(7.84))).toBe("12.6 L/100 mi");
     expect(nb(fmtPerDist(47.53))).toBe("76.49 ₴");
+  });
+
+  it("обидві одиниці: друга в дужках, у будь-якому порядку й мовою", () => {
+    use({ unit: "km", dual: true });
+    expect(nb(fmtDist(100000))).toBe("100,000 km (62,137 mi)");
+    use({ unit: "mi", dual: true });
+    expect(nb(fmtDist(100000))).toBe("62,137 mi (100,000 km)");
+    use({ lang: "uk", unit: "km", dual: true });
+    expect(nb(fmtDist(toKm(3, "mi")))).toBe("5 км (3 милі)");
+    use({ lang: "ru", unit: "mi", dual: true });
+    expect(nb(fmtDist(toKm(600, "mi")))).toBe("600 миль (966 км)");
+    expect(fmtDist(null)).toBe("—");
   });
 
   it("українською й російською — свої слова для миль", () => {
