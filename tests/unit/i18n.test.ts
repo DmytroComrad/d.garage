@@ -69,6 +69,16 @@ describe("словники", () => {
     expect(categoryLabel("ТО / расходники", MESSAGES.uk)).toBe("ТО / витратні матеріали");
     expect(categoryLabel("Своя категорія", MESSAGES.en)).toBe("Своя категорія");
   });
+
+  it("штрафи — окрема категорія всіма мовами, і з таблиці будь-якою мовою читаються назад", () => {
+    expect(LANGS.map((l) => categoryLabel("Штрафы", MESSAGES[l]))).toEqual(["Fines", "Штрафи", "Штрафы"]);
+    const fine = { ...service[0], id: "fine", cat: "Штрафы", what: "Перевищення швидкості", items: [] };
+    const data = { ...emptyData(), cars: [{ id: CAR, name: "Тест" }], service: [fine] };
+    for (const lang of LANGS) {
+      const tabs = Object.fromEntries(buildSheets(data, "2026-09-15", lang).map((s) => [s.title, sheetValues(s)]));
+      expect((sheetsToBackup(tabs)?.service as { cat: string }[]).map((s) => s.cat)).toEqual(["Штрафы"]);
+    }
+  });
 });
 
 describe("одиниці відстані", () => {

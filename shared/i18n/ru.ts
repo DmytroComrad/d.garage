@@ -99,6 +99,7 @@ export const ru: Messages = {
     care: "Мойка / уход",
     documents: "Документы / страховка",
     tuning: "Тюнинг",
+    fines: "Штрафы",
     other: "Другое",
   },
   itemKinds: {

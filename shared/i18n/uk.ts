@@ -99,6 +99,7 @@ export const uk: Messages = {
     care: "Мийка / догляд",
     documents: "Документи / страховка",
     tuning: "Тюнінг",
+    fines: "Штрафи",
     other: "Інше",
   },
   itemKinds: {

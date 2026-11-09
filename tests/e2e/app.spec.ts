@@ -341,6 +341,22 @@ test("кнопка «назад» закрывает окно, а не увод�
   await expect(page.getByRole("heading", { level: 1, name: "Тест" })).toBeVisible();
 });
 
+test("штраф записывается отдельной категорией и виден в статистике", async ({ page }) => {
+  await register(page);
+  await addCar(page, "Тест");
+  await page.getByRole("button", { name: "+ Сервис" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Штрафы", exact: true }).click();
+  await dialog.getByLabel("Что сделано / куплено").fill("Превышение скорости");
+  await dialog.getByLabel("Сумма ₴").fill("340");
+  await dialog.getByRole("button", { name: "Сохранить" }).click();
+
+  const rec = page.locator(".rec").first();
+  await expect(rec.locator(".tag")).toHaveText("Штрафы");
+  await openTab(page, "Статистика");
+  await expect(page.locator(".tab-panel")).toContainText("Штрафы");
+});
+
 test("Галерея без настроенного Google говорит об этом, а не падает", async ({ page }) => {
   await register(page);
   await addCar(page, "Тест");

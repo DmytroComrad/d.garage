@@ -102,6 +102,7 @@ export const en = {
     care: "Car wash / care",
     documents: "Documents / insurance",
     tuning: "Tuning",
+    fines: "Fines",
     other: "Other",
   },
   itemKinds: {
