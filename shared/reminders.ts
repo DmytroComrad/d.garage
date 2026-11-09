@@ -15,6 +15,22 @@ export const DAY_THRESHOLDS = { first: 30, second: 7 } as const;
 /** Пресети «нагадати через» у вибраних одиницях. */
 export const DIST_PRESETS: Record<Unit, number[]> = { km: [5000, 10000, 15000], mi: [3000, 5000, 10000] };
 
+/**
+ * Окреме нагадування: «через скільки» і «на якому пробігу» — два способи вказати те саме.
+ * Обидва в одиницях інтерфейсу, поточний пробіг машини — у кілометрах, як у базі.
+ * Повертають текст для поля; null — поле, з якого рахували, порожнє чи не число.
+ */
+export const odoAfter = (nowKm: number, rawAfter: string, unit: Unit = prefs().unit): string | null => {
+  const after = parseOdo(rawAfter);
+  return typeof after === "number" && after > 0 ? String(fromKm(nowKm, unit) + after) : null;
+};
+
+export const afterOdo = (nowKm: number, rawOdo: string, unit: Unit = prefs().unit): string | null => {
+  const odo = parseOdo(rawOdo);
+  const after = typeof odo === "number" ? odo - fromKm(nowKm, unit) : 0;
+  return after > 0 ? String(after) : null;
+};
+
 const kmThresholds = (unit: Unit = prefs().unit) => ({
   first: toKm(DIST_THRESHOLDS[unit].first, unit),
   second: toKm(DIST_THRESHOLDS[unit].second, unit),

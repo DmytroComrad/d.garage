@@ -191,6 +191,32 @@ test.describe("доработки: затраты, таблица, напоми�
     await expect(page.getByRole("tab", { name: /Напоминания/ }).locator(".tab-badge")).toHaveText("1");
   });
 
+  test("3: своё «через сколько» рядом с пресетами считает пробег само", async ({ page }) => {
+    await register(page);
+    await addCar(page, "Тест");
+    await addFuel(page, { odo: "120000", liters: "40", sum: "2000" });
+    await openTab(page, "Напоминания");
+    await page.getByRole("button", { name: "Добавить напоминание" }).click();
+    const form = page.getByRole("dialog");
+    await form.getByLabel("Что нужно сделать или заменить").fill("Замена масла");
+
+    // Пресеты остались.
+    await form.getByRole("button", { name: nb("через 5 000 км") }).click();
+    await expect(form.getByLabel("На пробеге, км")).toHaveValue("125000");
+    await expect(form.getByLabel("Через сколько напомнить, км")).toHaveValue("5000");
+
+    await form.getByLabel("Через сколько напомнить, км").fill("6500");
+    await expect(form.getByLabel("На пробеге, км")).toHaveValue("126500");
+    await expect(form.getByRole("button", { name: nb("через 5 000 км") })).not.toHaveClass(/is-on/);
+    await form.getByLabel("На пробеге, км").fill("127000");
+    await expect(form.getByLabel("Через сколько напомнить, км")).toHaveValue("7000");
+    await form.getByLabel("Через сколько напомнить, км").fill("6500");
+    await form.getByRole("button", { name: "Сохранить" }).click();
+
+    await expect(page.locator(".rem")).toContainText("Замена масла");
+    await expect(page.locator(".rem-when")).toContainText(nb("Через 6 500 км"));
+  });
+
   test("4: бэкап в .txt, восстановление из файла, повтор без дублей", async ({ page }) => {
     await register(page);
     await loadDemo(page);
