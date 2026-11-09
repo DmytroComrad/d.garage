@@ -40,6 +40,7 @@ export type SessionUser = {
   fuel_count: number;
   reminders_count: number;
   wishes_count: number;
+  manuals_count: number;
   photos_count: number;
 };
 

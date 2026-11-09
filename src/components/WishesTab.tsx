@@ -1,5 +1,5 @@
 import { wishesTotal } from "../../shared/calc";
-import { fmtDate, fmtMoneyRange } from "../../shared/format";
+import { fmtDate, fmtMoneyRange, hostOf } from "../../shared/format";
 import { LOCALES } from "../../shared/i18n";
 import { sortWishes } from "../../shared/listview";
 import type { ServiceRecord, Wish } from "../../shared/types";
@@ -7,15 +7,6 @@ import { openDialog, setWishDone, useCarView, useStore, useT } from "../lib/stor
 import { CheckIcon, LinkIcon } from "./icons";
 import { EmptyState } from "./Ledger";
 import { WishSortSelect, useWishSort } from "./ListTools";
-
-/** Коротка назва сайту для посилання: «rozetka.com.ua» замість довгої адреси. */
-const hostOf = (url: string): string => {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-};
 
 function WishRow({ wish, record }: { wish: Wish; record: ServiceRecord | undefined }) {
   const t = useT();

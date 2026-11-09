@@ -78,6 +78,19 @@ export const wishSchema = z
   })
   .refine((w) => w.priceMax == null || (w.price != null && w.priceMax > w.price));
 
+/**
+ * Мануал: посилання, нотатка або файл. Файл завантажується окремо (/api/manuals/file),
+ * а тут лише те, що людина може змінити сама: назва, посилання, нотатка й машина.
+ */
+export const manualSchema = z.object({
+  id,
+  car: id,
+  title: z.string().trim().min(1).max(LIMITS.titleLength),
+  url: z.string().trim().refine(isHttpUrl).nullable(),
+  note: z.string().trim().max(LIMITS.noteLength),
+  added: isoDate,
+});
+
 export const opSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("car.put"), data: carSchema }),
   z.object({ type: z.literal("car.del"), id }),
@@ -89,6 +102,8 @@ export const opSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("reminder.del"), id }),
   z.object({ type: z.literal("wish.put"), data: wishSchema }),
   z.object({ type: z.literal("wish.del"), id }),
+  z.object({ type: z.literal("manual.put"), data: manualSchema }),
+  z.object({ type: z.literal("manual.del"), id }),
   z.object({ type: z.literal("demo.set"), value: z.boolean() }),
   z.object({ type: z.literal("all.del") }),
 ]);

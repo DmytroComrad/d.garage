@@ -33,6 +33,23 @@ export const fmtMoney = (n: number | null | undefined): string =>
 
 export const fmtNum = (n: number): string => numberFormat(0, 0).format(n);
 
+/** Розмір файлу: «840 КБ», «2,4 МБ». */
+export const fmtFileSize = (bytes: number): string => {
+  const u = messages().manuals.size;
+  if (bytes < 1024) return `${fmtNum(bytes)}${NBSP}${u.b}`;
+  if (bytes < 1024 * 1024) return `${fmtNum(Math.round(bytes / 1024))}${NBSP}${u.kb}`;
+  return `${numberFormat(1, 1).format(bytes / 1024 / 1024)}${NBSP}${u.mb}`;
+};
+
+/** Коротка назва сайту для посилання: «rozetka.com.ua» замість довгої адреси. */
+export const hostOf = (url: string): string => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+};
+
 /** Ціле число з одиницею відстані: «12 000 км», «5,000 mi», «3 милі». Число вже в потрібних одиницях. */
 export const fmtUnits = (n: number): string => {
   const { unit } = prefs();

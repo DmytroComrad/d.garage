@@ -1289,6 +1289,73 @@ td,
 }
 
 /* Фото разной формы, без обрезки: это альбом, а не сетка превью */
+/* Мануали */
+
+.manual {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+}
+
+.manual + .manual {
+  border-top: 1px solid var(--line);
+}
+
+.manual-icon {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+.manual-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.manual-title {
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+a.manual-title {
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+}
+
+.manual-body .rec-meta {
+  overflow-wrap: anywhere;
+}
+
+.manual-note {
+  color: var(--ink-2);
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.share-url {
+  margin: 4px 0 10px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.shared-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 14px;
+}
+
+.shared-list .check > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* Підказка над вмістом вкладки: текст і дія поруч. */
 .notice {
   display: flex;
