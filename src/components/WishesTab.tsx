@@ -1,9 +1,12 @@
 import { wishesTotal } from "../../shared/calc";
 import { fmtDate, fmtMoneyRange } from "../../shared/format";
+import { LOCALES } from "../../shared/i18n";
+import { sortWishes } from "../../shared/listview";
 import type { ServiceRecord, Wish } from "../../shared/types";
-import { openDialog, setWishDone, useCarView, useT } from "../lib/store";
+import { openDialog, setWishDone, useCarView, useStore, useT } from "../lib/store";
 import { CheckIcon, LinkIcon } from "./icons";
 import { EmptyState } from "./Ledger";
+import { WishSortSelect, useWishSort } from "./ListTools";
 
 /** Коротка назва сайту для посилання: «rozetka.com.ua» замість довгої адреси. */
 const hostOf = (url: string): string => {
@@ -67,6 +70,9 @@ function WishRow({ wish, record }: { wish: Wish; record: ServiceRecord | undefin
 export function WishesTab({ carId }: { carId: string }) {
   const t = useT();
   const { wishes, wishRecords } = useCarView(carId);
+  const lang = useStore((s) => s.prefs.lang);
+  const [sort, setSort] = useWishSort();
+  const shown = sortWishes(wishes, sort, new Intl.Collator(LOCALES[lang]));
   const open = wishes.filter((w) => !w.done);
   const done = wishes.length - open.length;
   const planned = wishesTotal(open);
@@ -84,13 +90,16 @@ export function WishesTab({ carId }: { carId: string }) {
         <EmptyState title={t.wishes.emptyTitle} text={t.wishes.emptyText} />
       ) : (
         <>
-          <p className="wish-totals">
-            <span>{t.wishes.planned(open.length)}</span>
-            {planned.max > 0 && <span className="num">≈ {fmtMoneyRange(planned.min, planned.max)}</span>}
-            {done > 0 && <span>{t.wishes.doneCount(done)}</span>}
-          </p>
+          <div className="wish-head">
+            <p className="wish-totals">
+              <span>{t.wishes.planned(open.length)}</span>
+              {planned.max > 0 && <span className="num">≈ {fmtMoneyRange(planned.min, planned.max)}</span>}
+              {done > 0 && <span>{t.wishes.doneCount(done)}</span>}
+            </p>
+            {wishes.length > 1 && <WishSortSelect value={sort} onChange={setSort} />}
+          </div>
           <div className="sheet ledger">
-            {wishes.map((w) => (
+            {shown.map((w) => (
               <WishRow key={w.id} wish={w} record={wishRecords.get(w.id)} />
             ))}
           </div>

@@ -208,11 +208,15 @@ export function useSelection(ids: string[]) {
 
 export type Selection = ReturnType<typeof useSelection>;
 
-/** Кнопка над списком: вмикає вибір записів. Під час вибору замість неї — підказка. */
-export function SelectToggle({ selection }: { selection: Selection }) {
+/**
+ * Рядок над списком: ліворуч фільтр і сортування (children), праворуч — вибір записів для видалення.
+ * Під час вибору замість кнопки — підказка.
+ */
+export function SelectToggle({ selection, children }: { selection: Selection; children?: ReactNode }) {
   const t = useT();
   return (
     <div className="list-tools">
+      {children}
       {selection.on ? (
         <p className="muted">{t.select.hint}</p>
       ) : (

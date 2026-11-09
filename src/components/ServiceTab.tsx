@@ -1,11 +1,13 @@
-import { memo, useState } from "react";
+import { memo, useId, useMemo, useState } from "react";
 import { sumMoney } from "../../shared/calc";
 import { ITEM_KINDS, categoryLabel, itemKindLabel } from "../../shared/constants";
 import { fmtDate, fmtDist, fmtMoney, fmtMoney0, fmtPerDist } from "../../shared/format";
+import { EMPTY_INPUTS, filterFromInputs, filterRecords, recordMonths, sortRecords, sortsByDate } from "../../shared/listview";
 import type { Photo, ServiceRecord, Wish } from "../../shared/types";
 import { deleteRecords, openDialog, toast, unlinkWishes, useCarView, useStore, useT } from "../lib/store";
 import { NO_PHOTOS } from "../lib/view";
 import { WarnIcon } from "./icons";
+import { FilterPanel, FilterResult, ListControls, hasInputs, useListView } from "./ListTools";
 import {
   EmptyState,
   KeyValue,
@@ -162,9 +164,24 @@ export function ServiceTab({ carId }: { carId: string }) {
   const t = useT();
   const unit = useStore((s) => s.prefs.unit);
   const { service, photosByRecord, summary: s, staleRecords } = useCarView(carId);
-  const sorted = [...service].sort((a, b) => b.date.localeCompare(a.date) || (b.odo ?? -1) - (a.odo ?? -1));
-  const selection = useSelection(sorted.map((r) => r.id));
-  const stale = sorted.filter((r) => staleRecords.has(r.id));
+  const [view, setView] = useListView("service");
+  const panelId = useId();
+  const stale = useMemo(() => sortRecords(service, "new").filter((r) => staleRecords.has(r.id)), [service, staleRecords]);
+  const months = useMemo(() => recordMonths(service), [service]);
+  const shown = useMemo(
+    () => sortRecords(filterRecords(service, filterFromInputs(view.inputs, unit)), view.sort),
+    [service, view.inputs, view.sort, unit],
+  );
+  const selection = useSelection(shown.map((r) => r.id));
+  const row = (r: ServiceRecord) => (
+    <ServiceRow
+      key={r.id}
+      record={r}
+      photos={photosByRecord.get(r.id) ?? NO_PHOTOS}
+      stale={staleRecords.has(r.id)}
+      select={selection.on ? { checked: selection.isPicked(r.id), onToggle: selection.toggle } : undefined}
+    />
+  );
 
   return (
     <div className="columns">
@@ -199,7 +216,7 @@ export function ServiceTab({ carId }: { carId: string }) {
 
       <div className="list">
         <StaleRecords records={stale} wishes={stale.map((r) => staleRecords.get(r.id)).filter((w): w is Wish => !!w)} />
-        {sorted.length === 0 ? (
+        {service.length === 0 ? (
           <EmptyState title={t.service.emptyTitle} text={t.service.emptyText}>
             <button type="button" className="btn btn-service" onClick={() => openDialog({ type: "service", car: carId })}>
               {t.service.first}
@@ -207,20 +224,37 @@ export function ServiceTab({ carId }: { carId: string }) {
           </EmptyState>
         ) : (
           <>
-            <SelectToggle selection={selection} />
-            {groupByMonth(sorted).map(([key, records]) => (
-              <MonthGroup key={key} monthKey={key} total={fmtMoney0(sumMoney(records.map((r) => r.sum)))}>
-                {records.map((r) => (
-                  <ServiceRow
-                    key={r.id}
-                    record={r}
-                    photos={photosByRecord.get(r.id) ?? NO_PHOTOS}
-                    stale={staleRecords.has(r.id)}
-                    select={selection.on ? { checked: selection.isPicked(r.id), onToggle: selection.toggle } : undefined}
-                  />
-                ))}
-              </MonthGroup>
-            ))}
+            <SelectToggle selection={selection}>
+              <ListControls view={view} onChange={setView} panelId={panelId} />
+            </SelectToggle>
+            {view.open && (
+              <FilterPanel
+                id={panelId}
+                inputs={view.inputs}
+                months={months}
+                onChange={(inputs) => setView({ inputs })}
+                onClose={() => setView({ open: false })}
+              />
+            )}
+            {hasInputs(view.inputs) && (
+              <FilterResult
+                shown={shown.length}
+                total={service.length}
+                sum={fmtMoney0(sumMoney(shown.map((r) => r.sum)))}
+                onReset={() => setView({ inputs: EMPTY_INPUTS })}
+              />
+            )}
+            {shown.length === 0 ? (
+              <EmptyState title={t.list.nothingTitle} text={t.list.nothingText} />
+            ) : sortsByDate(view.sort) ? (
+              groupByMonth(shown).map(([key, records]) => (
+                <MonthGroup key={key} monthKey={key} total={fmtMoney0(sumMoney(records.map((r) => r.sum)))}>
+                  {records.map(row)}
+                </MonthGroup>
+              ))
+            ) : (
+              <div className="sheet ledger">{shown.map(row)}</div>
+            )}
             <SelectBar
               selection={selection}
               onDelete={(ids) => {

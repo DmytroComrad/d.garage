@@ -282,3 +282,68 @@ test("хотелка с ценой «от-до»: диапазон в списк
   await openTab(page, "Хотелки");
   await expect(page.locator(".wish-totals")).toContainText(nb("≈ 1 000 ₴"));
 });
+
+test("журнал: фильтр по месяцу, датам и пробегу, сортировка по сумме", async ({ page }) => {
+  await register(page);
+  await addCar(page, "Тест");
+  await addFuel(page, { date: "2026-01-10", odo: "1000", liters: "40", sum: "2000" });
+  await addFuel(page, { date: "2026-02-10", odo: "1500", liters: "40", sum: "2600" });
+  await addFuel(page, { date: "2026-03-10", odo: "2000", liters: "40", sum: "1800" });
+  await openTab(page, "Заправки");
+  const recs = page.locator(".rec");
+  await expect(recs).toHaveCount(3);
+
+  await page.getByRole("button", { name: "Фильтр" }).click();
+  const panel = page.getByRole("region", { name: "Фильтр" });
+  await panel.getByLabel("Месяц").selectOption("2026-02");
+  await expect(recs).toHaveCount(1);
+  await expect(page.locator(".filter-result")).toContainText("Показано 1 из 3");
+  await expect(page.locator(".filter-result")).toContainText(nb("2 600 ₴"));
+
+  await panel.getByLabel("Месяц").selectOption("");
+  await panel.getByLabel("Пробег от, км").fill("1200");
+  await expect(recs).toHaveCount(2);
+  await panel.getByLabel("Пробег до, км").fill("1800");
+  await expect(recs).toHaveCount(1);
+  await panel.getByLabel("Начало периода").fill("2026-03-01");
+  await expect(page.getByRole("heading", { name: "Ничего не найдено" })).toBeVisible();
+  await panel.getByRole("button", { name: "Сбросить" }).click();
+  await expect(recs).toHaveCount(3);
+  await panel.getByRole("button", { name: "Готово" }).click();
+  await expect(panel).toBeHidden();
+
+  // Сортировка рядом с фильтром: по сумме список идёт без деления на месяцы.
+  await page.getByLabel("Сортировка").selectOption({ label: "Сначала дорогие" });
+  await expect(page.locator(".month")).toHaveCount(0);
+  await expect(page.locator(".rec-sum")).toHaveText([/2\s600/, /2\s000/, /1\s800/]);
+
+  // Выбор переживает переход между вкладками.
+  await openTab(page, "Обслуживание");
+  await openTab(page, "Заправки");
+  await expect(page.getByLabel("Сортировка")).toHaveValue("expensive");
+  await expect(page.locator(".rec-sum").first()).toHaveText(/2\s600/);
+});
+
+test("хотелки можно отсортировать по цене и названию, выполненные остаются внизу", async ({ page }) => {
+  await register(page);
+  await addCar(page, "Тест");
+  await openTab(page, "Хотелки");
+  for (const [title, price] of [["Шины", "14000"], ["Коврики", "900"], ["Видеорегистратор", "5000"]]) {
+    await page.getByRole("button", { name: "Добавить хотелку" }).click();
+    const form = page.getByRole("dialog");
+    await form.getByLabel("Что хочешь сделать или купить").fill(title);
+    await form.getByLabel("Примерная цена, ₴").fill(price);
+    await form.getByRole("button", { name: "Сохранить" }).click();
+  }
+  const titles = page.locator(".wish-title");
+  await expect(titles).toHaveText(["Шины", "Коврики", "Видеорегистратор"]);
+
+  await page.getByLabel("Сортировка").selectOption({ label: "Сначала дорогие" });
+  await expect(titles).toHaveText(["Шины", "Видеорегистратор", "Коврики"]);
+  await page.getByLabel("Сортировка").selectOption({ label: "По названию" });
+  await expect(titles).toHaveText(["Видеорегистратор", "Коврики", "Шины"]);
+
+  await page.locator(".wish").filter({ hasText: "Видеорегистратор" }).getByRole("checkbox").click();
+  await page.getByRole("button", { name: "Нет, не нужно" }).click();
+  await expect(titles).toHaveText(["Коврики", "Шины", "Видеорегистратор"]);
+});
