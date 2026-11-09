@@ -14,6 +14,13 @@ const fromB64Url = (value: string): Uint8Array<ArrayBuffer> => {
   return out;
 };
 
+/**
+ * Окремий 32-байтовий ключ для певної мети, виведений із секрету: так один секрет не служить двом цілям напряму.
+ * Повертає base64url, як і TOKEN_KEY, тож підходить для encryptToken.
+ */
+export const deriveKey = async (secret: string, purpose: string): Promise<string> =>
+  toB64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(`${purpose}\u0000${secret}`))));
+
 export const randomToken = (bytes = 32): string => {
   const buf = new Uint8Array(bytes);
   crypto.getRandomValues(buf);
