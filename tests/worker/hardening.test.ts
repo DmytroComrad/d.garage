@@ -66,7 +66,7 @@ const service = (id: string, car = "car1"): Op => ({
 });
 const fuel = (id: string, car = "car1", odo = 2000): Op => ({
   type: "fuel.put",
-  data: { id, car, date: "2026-08-21", odo, liters: 37.74, sum: 2939.95, station: "", full: true, note: "" },
+  data: { id, car, date: "2026-08-21", odo, liters: 37.74, sum: 2939.95, station: "", full: true, note: "", grade: null },
 });
 const car = (id = "car1", name = "Машина"): Op => ({ type: "car.put", data: { id, name } });
 
@@ -397,5 +397,22 @@ describe("службове: вхід і скидання пароля", () => {
     await cleanupExpired(db);
     expect(await db.prepare("SELECT 1 FROM sessions WHERE user_id = ?").bind(id).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM password_resets WHERE user_id = ?").bind(id).first()).toBeNull();
+  });
+});
+
+describe("марка пального", () => {
+  it("зберігається, а незнайома марка не приймається; старий клієнт без марки — просто не вказана", async () => {
+    const { client } = await register();
+    const withGrade = (id: string, grade: unknown) => {
+      const op = fuel(id) as { type: string; data: Record<string, unknown> };
+      return { ...op, data: { ...op.data, grade } };
+    };
+    expect((await ops(client, [car(), withGrade("f1", "DTW")])).status).toBe(200);
+    expect((await ops(client, [withGrade("f2", "A80")])).status).toBe(400);
+    const old = fuel("f3", "car1", 2500) as { type: string; data: Record<string, unknown> };
+    const { grade: _, ...data } = old.data;
+    expect((await ops(client, [{ ...old, data }])).status).toBe(200);
+    const fuelRecords = (await state(client)).data.fuel as { id: string; grade: string | null }[];
+    expect(Object.fromEntries(fuelRecords.map((f) => [f.id, f.grade]))).toEqual({ f1: "DTW", f3: null });
   });
 });

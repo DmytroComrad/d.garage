@@ -262,6 +262,15 @@ describe("таблиця іншими мовами", () => {
     }
   });
 
+  it("марка пального пишеться назвою мовою таблиці й читається назад кодом", () => {
+    const withGrade = { ...data, fuel: fuel.map((f, i) => ({ ...f, grade: i ? ("DTW" as const) : null })) };
+    for (const lang of ["en", "uk", "ru"] as const) {
+      const tabs = Object.fromEntries(buildSheets(withGrade, "2026-09-15", lang).map((s) => [s.title, sheetValues(s)]));
+      const back = sheetsToBackup(tabs)?.fuel as { grade: string | null }[];
+      expect(back.map((f) => f.grade)).toEqual(fuel.map((_, i) => (i ? "DTW" : null)));
+    }
+  });
+
   it("назви листів беруться тією мовою, якою названо більшість", () => {
     expect(resolveSheetTabs(["Зведення", "Обслуговування", "Заправки"])).toMatchObject({
       summary: "Зведення",

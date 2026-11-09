@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { LIMITS } from "../shared/constants";
 import { nameKey } from "../shared/format";
+import { isFuelGrade } from "../shared/fuelGrades";
 import { retargetOp } from "../shared/ops";
 import { opsRequestSchema } from "../shared/schema";
 import type { Car, FuelRecord, GarageData, Manual, Op, OpsResponse, Photo, Reminder, ServiceRecord, Wish } from "../shared/types";
@@ -14,7 +15,7 @@ type ServiceRow = {
 };
 type FuelRow = {
   id: string; car_id: string; date: string; odo: number; liters: number; sum: number;
-  station: string; full: number; note: string;
+  station: string; full: number; note: string; grade: string | null;
 };
 type ReminderRow = {
   id: string; car_id: string; title: string; due_odo: number | null; due_date: string | null;
@@ -95,6 +96,7 @@ export async function loadGarage(db: D1Database, userId: string, demo: number): 
         sum: r.sum,
         station: r.station,
         full: r.full === 1,
+        grade: isFuelGrade(r.grade) ? r.grade : null,
         note: r.note,
       }),
     ),
@@ -183,13 +185,14 @@ const opStatements = (db: D1Database, userId: string, op: Op): D1PreparedStateme
       return [
         db
           .prepare(
-            `INSERT INTO fuel_records (user_id, id, car_id, date, odo, liters, sum, station, full, note)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO fuel_records (user_id, id, car_id, date, odo, liters, sum, station, full, note, grade)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (user_id, id) DO UPDATE SET
                car_id = excluded.car_id, date = excluded.date, odo = excluded.odo, liters = excluded.liters,
-               sum = excluded.sum, station = excluded.station, full = excluded.full, note = excluded.note`,
+               sum = excluded.sum, station = excluded.station, full = excluded.full, note = excluded.note,
+               grade = excluded.grade`,
           )
-          .bind(userId, r.id, r.car, r.date, r.odo, r.liters, r.sum, r.station, r.full ? 1 : 0, r.note),
+          .bind(userId, r.id, r.car, r.date, r.odo, r.liters, r.sum, r.station, r.full ? 1 : 0, r.note, r.grade),
         ...moveLinked(db, userId, r.id, r.car),
       ];
     }

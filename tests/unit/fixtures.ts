@@ -7,7 +7,7 @@ const svc = (id: string, date: string, odo: number | null, cat: string, what: st
 });
 
 const fl = (id: string, date: string, odo: number, liters: number, sum: number, full = true): FuelRecord => ({
-  id, car: CAR, date, odo, liters, sum, station: "АЗС", full, note: "",
+  id, car: CAR, date, odo, liters, sum, station: "АЗС", full, note: "", grade: null,
 });
 
 export const service: ServiceRecord[] = [

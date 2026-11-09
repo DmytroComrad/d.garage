@@ -33,6 +33,7 @@ export function demoRecords(today: string): {
     station,
     full: true,
     note: "",
+    grade: "A95",
   });
   const wish = (title: string, price: number, note = ""): Wish => ({
     id: genId(),

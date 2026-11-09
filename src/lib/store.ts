@@ -62,6 +62,8 @@ export type AppState = {
   prefs: Prefs;
   /** Пояснення, як працюють нагадування, вже прочитали на цьому пристрої. */
   reminderNoteSeen: boolean;
+  /** Застереження про витрату за АЗС уже прочитали на цьому пристрої. */
+  fuelNoteSeen: boolean;
   queue: Op[];
   offline: boolean;
   storageOk: boolean;
@@ -83,6 +85,7 @@ type StoredUi = {
   unit?: unknown;
   dateFormat?: unknown;
   reminderNoteSeen?: boolean;
+  fuelNoteSeen?: boolean;
 };
 
 const readUi = (): StoredUi => {
@@ -111,6 +114,7 @@ let state: AppState = {
   theme: ui.theme ?? "auto",
   prefs: initialPrefs,
   reminderNoteSeen: ui.reminderNoteSeen === true,
+  fuelNoteSeen: ui.fuelNoteSeen === true,
   queue: [],
   offline: false,
   storageOk: true,
@@ -160,6 +164,7 @@ const saveUi = (): void => {
       theme: state.theme,
       ...state.prefs,
       reminderNoteSeen: state.reminderNoteSeen,
+      fuelNoteSeen: state.fuelNoteSeen,
     };
     localStorage.setItem(UI_KEY, JSON.stringify(stored));
   } catch {
@@ -264,6 +269,11 @@ export const setPrefs = (patch: Partial<Prefs>): void => {
 
 export const dismissReminderNote = (): void => {
   setState({ reminderNoteSeen: true });
+  saveUi();
+};
+
+export const dismissFuelNote = (): void => {
+  setState({ fuelNoteSeen: true });
   saveUi();
 };
 

@@ -28,7 +28,7 @@ const data = (photos: Photo[]) => ({
   service: [
     { id: "s1", car: "c1", date: "2026-08-20", odo: 1, cat: "Ремонт", what: "Заміна масла / фільтра", where: "", sum: 1, note: "", items: [] },
   ],
-  fuel: [{ id: "f1", car: "c1", date: "2026-08-21", odo: 2, liters: 1, sum: 1, station: "", full: true, note: "" }],
+  fuel: [{ id: "f1", car: "c1", date: "2026-08-21", odo: 2, liters: 1, sum: 1, station: "", full: true, note: "", grade: null }],
 });
 
 describe("архів фото", () => {

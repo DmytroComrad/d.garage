@@ -1,5 +1,6 @@
 import { BACKUP_APP, LEGACY_BACKUP_APPS, LIMITS, OTHER_CATEGORY } from "./constants";
 import { genId, nameKey } from "./format";
+import { isFuelGrade } from "./fuelGrades";
 import { isHttpUrl, isIsoDate } from "./parse";
 import type { Backup, Car, FuelRecord, GarageData, Reminder, ServiceItem, ServiceRecord, Wish } from "./types";
 
@@ -232,6 +233,7 @@ export function mergeBackup(
       station: str(r.station, LIMITS.placeLength),
       full: r.full !== false,
       note: str(r.note, LIMITS.noteLength),
+      grade: isFuelGrade(r.grade) ? r.grade : null,
     });
     added++;
   }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LIMITS } from "./constants";
+import { FUEL_GRADES, type FuelGrade } from "./fuelGrades";
 import { isHttpUrl, isIsoDate } from "./parse";
 
 const id = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
@@ -44,6 +45,8 @@ export const fuelSchema = z.object({
   station: z.string().trim().max(LIMITS.placeLength),
   full: z.boolean(),
   note: z.string().trim().max(LIMITS.noteLength),
+  // Старі клієнти поля не знають: марка просто не вказана.
+  grade: z.enum(FUEL_GRADES as [FuelGrade, ...FuelGrade[]]).nullable().default(null),
 });
 
 export const reminderSchema = z
